@@ -16,17 +16,18 @@
  * 6.   The additional digital inputs will allow the motor to move forwards, backwards and stop.
  */
 
+
 #include <stdbool.h>
 #include <stdint.h>
 #include "SYSCTL.h"
 #include "GPIO.h"
 #include "OSC.h"
-#include "PWM.h"
 #include "M1PWMn.h"
+#include "MnPWMn.h"
 
 // Control interface system prototypes initialization
 void initGPIO(void);
-void moveForward(uint32_t in1, uint32_t in2);
+//void moveForward(uint32_t in1, uint32_t in2);
 
 int main(void)
 {
@@ -34,6 +35,7 @@ int main(void)
     //Establish system clock and enable both system clocks and PWM clock.
     //Use of PWM module 1 will require register writes to RCGCPWM register.
     initOSC();
+    //clock_speed = SysCtlClockGet();
     //Initiate GPIOs. Enable clocks to ports D and E (RCGCGPIO). PD1 and PE4 will
     //be used for the PWM output pins while PE1, PE2, PE3, and PE5 are the digital
     //signals out to the HUBee wheels.
@@ -50,10 +52,10 @@ int main(void)
 
     while(1){
 
-        moveForward(0, 1);
-        wait();
-        moveForward(1, 1);
-        wait();
+//        moveForward(0, 1);
+//        wait();
+//        moveForward(1, 1);
+//        wait();
 
     }//end main while loop
 
@@ -70,18 +72,22 @@ void initGPIO(void) {
 
     //Set direction for the ports, all ports will serve as outputs
     GPIO_PORTD[GPIO_DIR] |= GPIO_PIN_1;
-    GPIO_PORTE[GPIO_DIR] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
+    //GPIO_PORTE[GPIO_DIR] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
 
     //Set GPIO alternate function selections
     GPIO_PORTD[GPIO_AFSEL] |= GPIO_PIN_1;
-    GPIO_PORTE[GPIO_AFSEL] |= GPIO_PIN_4;
+    //GPIO_PORTE[GPIO_AFSEL] |= GPIO_PIN_4;
 
     //Enable digital signals to PE1, PE2, PE3, and PE5
-    GPIO_PORTE[GPIO_DEN] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5;
+    GPIO_PORTD[GPIO_DEN] |= GPIO_PIN_1;
+    //GPIO_PORTE[GPIO_DEN] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
 
     //Configure the PMCn fields in the GPIOPCTL register to assign the PWM signals to the appropriate
     //pins
-    GPIO_PORTD[GPIO_PCTL] = (GPIO_PORTD[GPIO_PCTL] &= ~(0xF<<(4*1))) | (0x5<<(4*1));
-    GPIO_PORTE[GPIO_PCTL] = (GPIO_PORTE[GPIO_PCTL] &= ~(0xF<<(4*4))) | (0x5<<(4*4));
+    GPIO_PORTD[GPIO_PCTL] &= ~(0xF<<(4*1));
+    GPIO_PORTD[GPIO_PCTL] |= (0x5<<(4*1));
+    //GPIO_PORTE[GPIO_PCTL] &= ~(0xF<<(4*4));
+    //GPIO_PORTE[GPIO_PCTL] |= (0x5<<(4*4));
 
 }
+

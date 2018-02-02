@@ -9,5 +9,6 @@
 #define OSC_H_
 
 void initOSC(void);
+uint32_t SysCtlClockGet(void);
 
 #endif /* OSC_H_ */
