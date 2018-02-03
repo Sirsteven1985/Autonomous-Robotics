@@ -15,7 +15,7 @@
 enum {
 
         SYSCTL_RCGCPWM          =   (0x640 >> 2),   //RCGC PWM1 offset
-#define SYSCTL_RCGCPWM1             (1 << 1),       //Enable PWM 1 module
+#define SYSCTL_RCGC_M1PWMn          (1 << 1)       //Enable PWM 1 module
         SYSCTL_RCGCGPIO         =   (0x608 >> 2),   //RCGC GPIO offset
 #define SYSCTL_RCGCGPIO_PORTB       (1 << 1)        //Enable run mode gating clock control
 #define SYSCTL_RCGCGPIO_PORTC       (1 << 2)        //for ports: B, C, D, and E
@@ -36,8 +36,8 @@ enum {
         SYSCTL_RCC_R            =   (0x060 >> 2),   //Run-mode clock configuration register
 #define SYSCTL_RCC_USESYSDIV        (1 << 22)       //System clock is used undivided
 #define SYSCTL_RCC_XTAL             (0x15 << 6)     //16MHz crystal value
-#define SYSCTL_RCC_USEPWMDIV        (1 << 20),      //Enable PWM Clock. The PWM clock divider is the source for the PWM clock.
-#define SYSCTL_RCC_PWMDIV           (0x2 << 17),    //Value Divisor
+#define SYSCTL_RCC_USEPWMDIV        (1 << 20)      //Enable PWM Clock. The PWM clock divider is the source for the PWM clock.
+#define SYSCTL_RCC_PWMDIV           (0x2 << 17)    //Value Divisor
                                                     //0x0   /2
                                                     //0x1   /4
                                                     //0x2   /8
@@ -53,7 +53,7 @@ enum {
                                                     //Note: The ADC must be clocked from the PLL or directly from a
                                                     //16-MHz clock source to operate properly.
 #define SYSCTL_RCC2_USERCC2         ((uint32_t)1<<31)//The RCC2 register fields override the RCC register fields.
-#define SYSCTL_RCC2_OSCSRC2         (0x0 << 4)      //Select main oscillator.
+#define SYSCTL_RCC2_OSCSRC2         (0x1 << 4)      //Select main oscillator.
 #define SYSCTL_RCC2_PWRDN2          (1 << 13)       //Clear this bit to power and enable PLL and output
 #define SYSCTL_RCC2_SYSDIV2         (0x02 << 23)    //System Clock Divisor 2
 #define SYSCTL_RCC2_SYSDIV2LSB      (1 << 22)       //Additional LSB for SYSDIV2
