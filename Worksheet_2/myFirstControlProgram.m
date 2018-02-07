@@ -1,11 +1,15 @@
 function finalRad = myFirstControlProgram(robotObj)
     % Set constants for this program
+	
+	%%% PART 2a
+	
+	
     maxDuration= 5;  % Max time to allow the program to run (s)    
     
     % Initialize loop variables
     tStart= tic;        % Time limit marker
-    phi_1 = 3;
-    phi_2 = 1;
+    phi_1 = 3;			% Right wheel speed
+    phi_2 = 1;			% Left wheel speed
     [ang_vel, fwd_vel] = control_program(phi_1, phi_2);
     % Set initial robot location
     setMapStart(robotObj,[0 0 0]);
@@ -20,13 +24,16 @@ function finalRad = myFirstControlProgram(robotObj)
         % Briefly pause to avoid continuous loop iteration
         pause(1)
     end
+	
+	
+	%%% PART 2b
     
     maxDuration= 10;  % Max time to allow the program to run (s)       
     tStart= tic;        % Time limit marker
     % Start robot driving forward
     
-    phi_1 = 2;
-    phi_2 = 2;
+    phi_1 = 2;		% Right wheel speed
+    phi_2 = 2;		% Left wheel speed
     [ang_vel_2, fwd_vel_2] = control_program(phi_1, phi_2);
     
     SetFwdVelAngVel(robotObj,fwd_vel_2,ang_vel_2);
@@ -38,11 +45,14 @@ function finalRad = myFirstControlProgram(robotObj)
     pause(1)
     end
     
+	
+	%%% PART 2c
+	
     maxDuration= 1;  % Max time to allow the program to run (s)     
     tStart= tic;        % Time limit marker
     % Start robot driving forward
-    phi_1 = 4;
-    phi_2 = -4;
+    phi_1 = 4;		% Right wheel speed
+    phi_2 = -4;		% Left wheel speed
     [ang_vel, fwd_vel] = control_program(phi_1, phi_2);
     
     SetFwdVelAngVel(robotObj,fwd_vel,ang_vel);
