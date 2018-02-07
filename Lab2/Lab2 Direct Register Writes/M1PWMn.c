@@ -18,18 +18,15 @@ void initM1PWMn(void) {
     for(uint32_t i = 0; i < 0xFFFF; i++);      // Need extra delay for PWM clock to set.
 
     //6. Configure the PWM generator for countdown mode with immediate updates to the parameters.
-    //Generator 0
     //■ Write the PWM0CTL register with a value of 0x0000.0000.
     M1PWM[PWM0_CTL] &= 0x00000000;
-    //■ Write the PWM0GENA register with a value of 0x0000.008C.
-    //M1PWM[PWM1_GENA] = 0x000000B0;
-    //■ Write the PWM0GENB register with a value of 0x0000.080C.
-    //M1PWM[PWM1_GENB] &= ~0x80c;
-    M1PWM[PWM0_GENB] |= (0x80C << 0);
-
-    //Generator 1
     M1PWM[PWM1_CTL] &= 0x00000000;
+    //■ Write the PWM0GENA register with a value of 0x0000.008C.
+    //M1PWM[PWM0_GENA] |= (0x08C << 0);
+    //M1PWM[PWM1_GENA] |= (0x08C << 0);
+    //■ Write the PWM0GENB register with a value of 0x0000.080C.
     M1PWM[PWM1_GENB] |= (0x80C << 0);
+    M1PWM[PWM0_GENB] |= (0x80C << 0);
 
     //7. Set the period. For a 25-KHz frequency, the period = 1/25,000, or 40 microseconds. The PWM
     //clock source is 10 MHz; the system clock divided by 2. Thus there are 400 clock ticks per period.
@@ -43,8 +40,10 @@ void initM1PWMn(void) {
 
     //8. Set the pulse width of the MnPWM0 pin for a 25% duty cycle.
     //■ Write the PWM0CMPA register with a value of 0x0000.012B.
-    //M1PWM[PWM0_CMPA] = 0x0000012B;                                 //299 decimal
-    //M1PWM[PWM1_CMPA] = 0x0000012B;
+    //Generator 0
+    //M1PWM[PWM0_CMPA] |= (0x12B << 0);                                 //299 decimal
+    //Generator 1
+    //M1PWM[PWM1_CMPA] |= (0x12B << 0);
 
     //9. Set the pulse width of the MnPWM1 pin for a 75% duty cycle.
     //■ Write the PWM0CMPB register with a value of 0x0000.0063.
@@ -62,6 +61,6 @@ void initM1PWMn(void) {
 
     //11. Enable PWM outputs.
     //■ Write the PWMENABLE register with a value of 0x0000.0002.
-    M1PWM[PWM_ENABLE] |= (1 << 1);
+    M1PWM[PWM_ENABLE] |= (0x3 << 0);
 
 }

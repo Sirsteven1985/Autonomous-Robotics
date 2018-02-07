@@ -52,14 +52,14 @@ int main(void)
 
     while(1){
 
-        move(0, 1); //forward
-        wait();
-        move(1, 1); //stop
-        wait();
-        move(1, 0); //backwards
-        wait();
-        move(1, 1); //stop
-        wait();
+//        move(0, 1); //forward
+//        wait();
+//        move(1, 1); //stop
+//        wait();
+//        move(1, 0); //backwards
+//        wait();
+//        move(1, 1); //stop
+//        wait();
 
     }//end main while loop
 
@@ -106,8 +106,8 @@ void initGPIO(void) {
     GPIO_PORTE[GPIO_DIR] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
 
     //Set GPIO alternate function selections
-    GPIO_PORTD[GPIO_AFSEL] |= GPIO_PIN_1;       //PD1 M1PWM0, Generator 0
-    GPIO_PORTE[GPIO_AFSEL] |= GPIO_PIN_4;       //PE4 M1PWM2, Generator 1
+    GPIO_PORTD[GPIO_AFSEL] |= GPIO_PIN_1;       //PD1 M1PWM1, Generator 0
+    GPIO_PORTE[GPIO_AFSEL] |= GPIO_PIN_5;       //PE4 M1PWM2, Generator 1
 
     //Enable digital signals to PE[1:5] and PD1
     GPIO_PORTD[GPIO_DEN] |= GPIO_PIN_1;
@@ -116,9 +116,9 @@ void initGPIO(void) {
     //Configure the PMCn fields in the GPIOPCTL register to assign the PWM signals to the appropriate
     //pins. PMC5 to both M1PWM1 and M1PWM2.
     GPIO_PORTD[GPIO_PCTL] &= ~(0xF<<(4*1));
+    GPIO_PORTE[GPIO_PCTL] &= ~(0xF<<(4*5));
     GPIO_PORTD[GPIO_PCTL] |= (0x5<<(4*1));
-    GPIO_PORTE[GPIO_PCTL] &= ~(0xF<<(4*4));
-    GPIO_PORTE[GPIO_PCTL] |= (0x5<<(4*4));
+    GPIO_PORTE[GPIO_PCTL] |= (0x5<<(4*5));
 
 }
 
