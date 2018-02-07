@@ -14,11 +14,13 @@
 * Lab 2:
 
 -Steve_G_prelab 2.docx
+
 -vuong_prelab2.docx
 
 * Worksheet 2 part 2:
 
 -control_program.m
+
 -myFirstControlPorgram.m
 	
 	
