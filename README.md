@@ -9,6 +9,12 @@ Lab 1:
 	
 	
 Lab 2:
+
+
+Worksheet 2 part 2:
+
+control_program.m
+myFirstControlPorgram.m
 	
 	
 Lab 3:
