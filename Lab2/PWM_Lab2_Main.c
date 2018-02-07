@@ -7,6 +7,9 @@
 #include "driverlib\pwm.h"
 #include "driverlib\pin_map.h"
 #include "inc/hw_memmap.h"
+void drive_FWD(void);
+void drive_Back(void);
+void Brake(void);
 
 
 /**
@@ -15,27 +18,27 @@
 int main(void)
 {
 
-//Set system clock to 20MHz, Utilize main oscillator
+//Set system clock to 16MHz, Utilize main oscillator
 SysCtlClockSet(SYSCTL_OSC_MAIN | SYSCTL_USE_OSC | SYSCTL_XTAL_16MHZ);
-
-//Set GPIO
-// sysctlpwmclockset
 
 
 SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
 SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM0);
+//SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM1);
+
 //
+//GPIOPinTypePWM(GPIO_PORTB_BASE, ( (GPIO_PIN_6) | (GPIO_PIN_7)));
 GPIOPinTypePWM(GPIO_PORTB_BASE, GPIO_PIN_6);
 
 //
 SysCtlPWMClockSet(SYSCTL_PWMDIV_1);
 // Wait for the PWM0 module to be ready.
-//GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE,GPIO_PIN_6);
+GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1) | (GPIO_PIN_2)));
 // Enable the PWM0 peripheral
-///GPIOIntEnable(GPIO_PORTB_BASE, GPIO_PIN_6);
+GPIOIntEnable(GPIO_PORTB_BASE, ( (GPIO_PIN_0) | (GPIO_PIN_1) | (GPIO_PIN_2) | (GPIO_PIN_3) | (GPIO_PIN_6) | (GPIO_PIN_7)));
 //
+//GPIOPinConfigure( (GPIO_PB6_M0PWM0)| (GPIO_PB7_M0PWM1));
 GPIOPinConfigure(GPIO_PB6_M0PWM0);
-
 
 while(!SysCtlPeripheralReady(SYSCTL_PERIPH_PWM0))
 { }
@@ -68,9 +71,36 @@ PWMGenEnable(PWM_BASE_0, PWM_GEN_0);
 //
 PWMOutputState(PWM_BASE_0, (PWM_OUT_0_BIT | PWM_OUT_1_BIT), true);
 
+
+
+//////////////////////      Drive forward      ///////////////////////
+
+drive_FWD();
+
+
 	while(1)
 	{
+
 
 	}
 
 }
+
+void drive_FWD(void)
+{
+    GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_2) ), ( (GPIO_PIN_0) | (GPIO_PIN_2) ));
+    GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_1, ~(GPIO_PIN_1));
+}
+
+void drive_Back(void)
+{
+    GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_2) ), ( (GPIO_PIN_0) | (GPIO_PIN_2) ));
+    GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_1, ~(GPIO_PIN_1));
+}
+
+void brake(void)
+{
+    GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_2) ), ( (GPIO_PIN_0) | (GPIO_PIN_2) ));
+    GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_1, ~(GPIO_PIN_1));
+}
+
