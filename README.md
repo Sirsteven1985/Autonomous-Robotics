@@ -5,27 +5,32 @@
 
 * Files to grade for labs:
 
-Lab 1:
-	
-	
-Lab 2:
+* Lab 1:
 
+-Blinky_API.c
 
-Worksheet 2 part 2:
+-Blinky_DirectRegisterWrites.c
+	
+* Lab 2:
 
-control_program.m
-myFirstControlPorgram.m
+-Steve_G_prelab 2.docx
+-vuong_prelab2.docx
+
+* Worksheet 2 part 2:
+
+-control_program.m
+-myFirstControlPorgram.m
 	
 	
-Lab 3:
+* Lab 3:
 	
 	
-Lab 4:
+* Lab 4:
 	
 	
-Lab 5:
+* Lab 5:
 	
 	
-Lab 6:
+* Lab 6:
 	
 	
