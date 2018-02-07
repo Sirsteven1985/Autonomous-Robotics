@@ -15,7 +15,7 @@
 enum {
 
         SYSCTL_RCGCPWM          =   (0x640 >> 2),   //RCGC PWM1 offset
-#define SYSCTL_RCGC_M1PWMn          (1 << 1)       //Enable PWM 1 module
+#define SYSCTL_RCGC_M1PWM           (1 << 1)       //Enable PWM 1 module
         SYSCTL_RCGCGPIO         =   (0x608 >> 2),   //RCGC GPIO offset
 #define SYSCTL_RCGCGPIO_PORTB       (1 << 1)        //Enable run mode gating clock control
 #define SYSCTL_RCGCGPIO_PORTC       (1 << 2)        //for ports: B, C, D, and E

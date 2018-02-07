@@ -6,10 +6,10 @@
  * Lab 2 - Pulse Width Modulation (PWM)
  * Lab Associates:  Paul Vuong
  *                  Steve Guerro
- * 1.   To drive the HUB-ee motors/wheels, the PWM modules need to be configured for
- *      dead-band generation.
- * 2.   PWM Generator 1 will supply a signal to the right wheel.
- * 3.   PWM Generator 2 will supply a signal to the left wheel.
+ * 1.   To drive the HUB-ee motors/wheels, a PWM signal supplies an average potential to the motors.
+ *      The higher the average potential (the greater the pulse width) the faster the motor spins.
+ * 2.   PWM module 1 Generator 0 (M1PWM1 Load/Generator/Comparator B,register bitfields) will supply a signal to the right wheel from PD1.
+ * 3.   PWM module 1 Generator 1 (M1PWM1 Generator/Comparator B) will supply a signal to the left wheel.
  * 4.   In addition to the PWM dead-band signals, two additional digital control signals
  *      will give added functionality to the wheels.
  * 5.   Digital signals will be sourced from the many GPIO ports as a digital output
@@ -27,7 +27,8 @@
 
 // Control interface system prototypes initialization
 void initGPIO(void);
-//void moveForward(uint32_t in1, uint32_t in2);
+void move(uint32_t IN1, uint32_t IN2); //moves robot forward and then backwards
+void wait(void); //wait timer
 
 int main(void)
 {
@@ -51,15 +52,42 @@ int main(void)
 
     while(1){
 
-//        moveForward(0, 1);
-//        wait();
-//        moveForward(1, 1);
-//        wait();
+        move(0, 1); //forward
+        wait();
+        move(1, 1); //stop
+        wait();
+        move(1, 0); //backwards
+        wait();
+        move(1, 1); //stop
+        wait();
 
     }//end main while loop
 
 }
 
+void move(uint32_t IN1, uint32_t IN2){
+
+    if(IN1==0 && IN2==1){
+        GPIO_PORTE[GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5] = ~GPIO_PIN_1 | GPIO_PIN_2 | ~GPIO_PIN_3 | GPIO_PIN_5;
+    }//move forward
+
+    if(IN1==1 && IN2==0){
+        GPIO_PORTE[GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5] = GPIO_PIN_1 | ~GPIO_PIN_2 | GPIO_PIN_3 | ~GPIO_PIN_5;
+    }//move backwards
+
+    if(IN1==1 && IN2==1){
+        GPIO_PORTE[GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5] = GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5;
+    }//stop
+
+}
+
+void wait(void){
+
+    for(uint32_t i=10000; i<10000; i++){
+
+    }
+
+}
 
 void initGPIO(void) {
 
@@ -70,23 +98,27 @@ void initGPIO(void) {
     SYSCTL[SYSCTL_RCGCGPIO] |= SYSCTL_RCGCGPIO_PORTD | SYSCTL_RCGCGPIO_PORTE;
 
     //Set direction for the ports, all ports will serve as outputs
+    //                         PD1
+    //                        M1PWM0
     GPIO_PORTD[GPIO_DIR] |= GPIO_PIN_1;
-    //GPIO_PORTE[GPIO_DIR] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
+    //                          PE1    |    PE2     |     PE3    |    PE4     |     PE5
+    //                      RWheel IN1 | RWheel In2 | LWheel IN1 |   M1PWM2   | LWheel IN2
+    GPIO_PORTE[GPIO_DIR] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
 
     //Set GPIO alternate function selections
-    GPIO_PORTD[GPIO_AFSEL] |= GPIO_PIN_1;
-    //GPIO_PORTE[GPIO_AFSEL] |= GPIO_PIN_4;
+    GPIO_PORTD[GPIO_AFSEL] |= GPIO_PIN_1;       //PD1 M1PWM0, Generator 0
+    GPIO_PORTE[GPIO_AFSEL] |= GPIO_PIN_4;       //PE4 M1PWM2, Generator 1
 
-    //Enable digital signals to PE1, PE2, PE3, and PE5
+    //Enable digital signals to PE[1:5] and PD1
     GPIO_PORTD[GPIO_DEN] |= GPIO_PIN_1;
-    //GPIO_PORTE[GPIO_DEN] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
+    GPIO_PORTE[GPIO_DEN] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
 
     //Configure the PMCn fields in the GPIOPCTL register to assign the PWM signals to the appropriate
-    //pins
+    //pins. PMC5 to both M1PWM1 and M1PWM2.
     GPIO_PORTD[GPIO_PCTL] &= ~(0xF<<(4*1));
     GPIO_PORTD[GPIO_PCTL] |= (0x5<<(4*1));
-    //GPIO_PORTE[GPIO_PCTL] &= ~(0xF<<(4*4));
-    //GPIO_PORTE[GPIO_PCTL] |= (0x5<<(4*4));
+    GPIO_PORTE[GPIO_PCTL] &= ~(0xF<<(4*4));
+    GPIO_PORTE[GPIO_PCTL] |= (0x5<<(4*4));
 
 }
 
