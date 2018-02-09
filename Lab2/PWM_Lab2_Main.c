@@ -159,14 +159,14 @@ void left_drive_Back(void)
     //  IN2 --> PIN_4
     //  STANDBY --> PIN_3
 
-    // Setting the proper pins to drive the motor forward [ IN1 = 0 ; IN2 = 1 ; SB = 1 ]
+    // Setting the proper pins to drive the motor in reverse [ IN1 = 0 ; IN2 = 1 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_5) ), ( (GPIO_PIN_3) | (GPIO_PIN_5) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4, ~(GPIO_PIN_4));
 }
 
 void left_drive_FWD(void)
 {
-    // Setting the proper pins to drive the motor in reverse [ IN1 = 1 ; IN2 = 0 ; SB = 1 ]
+    // Setting the proper pins to drive the motor forward [ IN1 = 1 ; IN2 = 0 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4) ), ( (GPIO_PIN_3) | (GPIO_PIN_4) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_5, ~(GPIO_PIN_5));
 }
