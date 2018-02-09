@@ -3,7 +3,7 @@
 * Files for ECPE 155 Autonomous Robotics course.
 * Authors: Steve Guerrero and Paul Vuong
 
-* Files to grade for labs:
+* Files to grade for labs/worksheets:
 
 * Lab 1:
 
@@ -16,6 +16,8 @@
 -Steve_G_prelab 2.docx
 
 -vuong_prelab2.docx
+
+-PWM_Lab2_Main.c
 
 * Worksheet 2 part 2:
 
