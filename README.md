@@ -28,6 +28,10 @@
 -worksheet2.m	
 	
 * Lab 3:
+
+-ECPE155_prelab3_SG
+
+-vuong_prelab3
 	
 	
 * Lab 4:
