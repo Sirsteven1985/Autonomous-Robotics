@@ -1,11 +1,12 @@
 
 
 /**
+ * main.c
  * ECPE 155 Autonomous Robotics
  * Spring 2018
  * Lab 2 - Pulse Width Modulation (PWM)
  * Lab Associates:  Paul Vuong
- *                  Steve Guerrero
+ *                  Steve Guerro
  * 1.   To drive the HUB-ee motors/wheels, a PWM signal supplies an average potential to the motors.
  *      The higher the average potential (the greater the pulse width) the faster the motor spins.
  * 2.   PWM module 1 Generator 0 (M1PWM1 Load/Generator/Comparator B,register bitfields) will supply a signal to the right wheel from PD1.
@@ -16,19 +17,20 @@
  * 6.   The additional digital inputs will allow the motor to move forwards, backwards and stop.
  */
 
-
 #include <stdbool.h>
 #include <stdint.h>
 #include "SYSCTL.h"
 #include "GPIO.h"
 #include "OSC.h"
-#include "M1PWMn.h"
 #include "MnPWMn.h"
+#include "M1PWMn.h"
 
 // Control interface system prototypes initialization
 void initGPIO(void);
-void move(uint32_t IN1, uint32_t IN2); //moves robot forward and then backwards
-void wait(void); //wait timer
+//moves robot forward and then backwards
+void move(uint8_t IN1, uint8_t IN2);
+//wait timer
+void wait(void);
 
 int main(void)
 {
@@ -52,71 +54,71 @@ int main(void)
 
     while(1){
 
-//        move(0, 1); //forward
-//        wait();
-//        move(1, 1); //stop
-//        wait();
-//        move(1, 0); //backwards
-//        wait();
-//        move(1, 1); //stop
-//        wait();
+        move(0, 1); //forward
+        move(1, 1); //stop
+        move(1, 0); //backwards
+        move(1, 1); //stop
 
     }//end main while loop
 
 }
 
-void move(uint32_t IN1, uint32_t IN2){
+void move(uint8_t IN1, uint8_t IN2){
 
     if(IN1==0 && IN2==1){
-        GPIO_PORTE[(GPIO_PIN_1 | GPIO_PIN_3)] &= ~( GPIO_PIN_1 | GPIO_PIN_3 );
+        //                                                                    PE1    |     PE3     |     PE2     |     PE5
+        //                                                                RWheel IN1 |  LWheel In1 |  RWheel IN2 | LWheel IN2
+        GPIO_PORTE[GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5] = ~(GPIO_PIN_1 | GPIO_PIN_5) | (GPIO_PIN_2 | GPIO_PIN_3);
+        wait();
 
-        GPIO_PORTE[(GPIO_PIN_2 | GPIO_PIN_5)] |=  ( GPIO_PIN_2 | GPIO_PIN_5 );
     }//move forward
 
     if(IN1==1 && IN2==0){
 
-        GPIO_PORTE[(GPIO_PIN_2 | GPIO_PIN_5)] &= ~( GPIO_PIN_2 | GPIO_PIN_5 );
+        GPIO_PORTE[GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5] = (GPIO_PIN_1 | GPIO_PIN_5) | ~(GPIO_PIN_2 | GPIO_PIN_3);
+        wait();
 
-        GPIO_PORTE[(GPIO_PIN_1 | GPIO_PIN_3)] |=  ( GPIO_PIN_1 | GPIO_PIN_3 );
     }//move backwards
 
     if(IN1==1 && IN2==1){
-        GPIO_PORTE[( GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5 )] |= ( GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5 );
+
+        GPIO_PORTE[GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5] = GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_5;
+
     }//stop
 
 }
 
 void wait(void){
 
-    for(uint32_t i=10000; i<10000; i++){
+    for(uint32_t i=0; i<2000000; i++){
 
     }
 
 }
 
-void initGPIO(void) {
+void initGPIO(void){
 
     //Enable clocks to GPIO ports D and E for M1PWM1 and M1PWM2
     //PORTD PD1 for M1PWM1 and PORTE PE4 for M1PWM2
     //Additionally, PORTE PE1, PE2, PE3, and PE5, are to be configured for the digital control signals
-    SYSCTL[SYSCTL_RCGCGPIO] |= ( SYSCTL_RCGCGPIO_PORTD | SYSCTL_RCGCGPIO_PORTE );
-    SYSCTL[SYSCTL_RCGCGPIO] |= ( SYSCTL_RCGCGPIO_PORTD | SYSCTL_RCGCGPIO_PORTE );
+    SYSCTL[SYSCTL_RCGCGPIO] |= SYSCTL_RCGCGPIO_PORTD | SYSCTL_RCGCGPIO_PORTE;
+    SYSCTL[SYSCTL_RCGCGPIO] |= SYSCTL_RCGCGPIO_PORTD | SYSCTL_RCGCGPIO_PORTE;
 
     //Set direction for the ports, all ports will serve as outputs
     //                         PD1
-    //                        M1PWM1
+    //                        M1PWM0
     GPIO_PORTD[GPIO_DIR] |= GPIO_PIN_1;
     //                          PE1    |    PE2     |     PE3    |    PE4     |     PE5
-    //                      RWheel IN1 | RWheel In2 | LWheel IN1 |   M1PWM2   | LWheel IN2
-    GPIO_PORTE[GPIO_DIR] |= ( GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5 );
+    //                      RWheel IN1 | RWheel IN2 | LWheel IN1 |   M1PWM2   | LWheel IN2
+    GPIO_PORTE[GPIO_DIR] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
 
     //Set GPIO alternate function selections
-    GPIO_PORTD[GPIO_AFSEL] |= GPIO_PIN_1;       //PD1 M1PWM1, Module 1 Generator 0
-    GPIO_PORTE[GPIO_AFSEL] |= GPIO_PIN_4;       //PE4 M1PWM2, Module 1 Generator 1
+    GPIO_PORTD[GPIO_AFSEL] |= GPIO_PIN_1;       //PD1 M1PWM1, Generator 0
+    GPIO_PORTE[GPIO_AFSEL] |= GPIO_PIN_4;       //PE4 M1PWM2, Generator 1
 
     //Enable digital signals to PE[1:5] and PD1
     GPIO_PORTD[GPIO_DEN] |= GPIO_PIN_1;
-    GPIO_PORTE[GPIO_DEN] |= ( GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5 );
+    GPIO_PORTE[GPIO_DEN] |= GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
 
     //Configure the PMCn fields in the GPIOPCTL register to assign the PWM signals to the appropriate
     //pins. PMC5 to both M1PWM1 and M1PWM2.
