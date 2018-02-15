@@ -10,7 +10,13 @@
 #include "driverlib\gpio.h"
 #include "driverlib\pwm.h"
 #include "driverlib\pin_map.h"
+#include "driverlib\interrupt.h"
+#include "driverlib\uart.h"
+#include "driverlib\qei.h"
+#include "inc/hw_gpio.h"
 #include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+
 void right_drive_FWD(void);
 void right_drive_Back(void);
 void right_brake(void);
@@ -19,7 +25,19 @@ void left_drive_FWD(void);
 void left_drive_Back(void);
 void left_brake(void);
 void left_standby(void);
+void QEI0_handler(void);
 
+
+volatile    uint32_t stat = 0;
+volatile    uint32_t clock_Wh1, clock_Wh2;
+volatile    uint32_t speed_Wh1, speed_Wh2;
+volatile    uint32_t direction_Wh1, direction_Wh2;
+volatile    uint32_t RPM_Wh1, RPM_Wh2;
+const       uint32_t ppr = 63;
+const       uint32_t load = 50;
+
+const       uint32_t L = 3;
+const       uint32_t r = 2;
 
 /**
  * main.c
@@ -30,9 +48,17 @@ int main(void)
 //Set system clock to 16MHz, Utilize main oscillator
 SysCtlClockSet(SYSCTL_OSC_MAIN | SYSCTL_USE_OSC | SYSCTL_XTAL_16MHZ);
 
-
+// Enable PWM peripherals
 SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
 SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM0);
+
+// Enable UART Peripherals
+SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
+SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+
+// Enable QEI Peripherals
+SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
+SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI0);
 
 
 //
@@ -49,7 +75,7 @@ GPIOIntEnable(GPIO_PORTB_BASE, ( (GPIO_PIN_0) | (GPIO_PIN_1) | (GPIO_PIN_2) | (G
 GPIOPinConfigure( GPIO_PB6_M0PWM0 );   // Located in PinMap.h
 GPIOPinConfigure( GPIO_PB7_M0PWM1 ); // Located in PinMap.h
 
-while(!SysCtlPeripheralReady(SYSCTL_PERIPH_PWM0))
+while(!SysCtlPeripheralReady(SYSCTL_PERIPH_QEI0))
 { }
 //
 // Configure the PWM generator for count down mode with immediate updates
@@ -90,44 +116,22 @@ PWMOutputState(PWM_BASE_0, (PWM_OUT_0_BIT | PWM_OUT_1_BIT), true);
 
 
 
-//////////////////////      Drive forward      ///////////////////////
 
-right_drive_FWD();
-
-left_drive_Back();
-
-for( uint32_t ii = 0; ii < 5000000 ; ii++){}
-
-right_brake();
-left_brake();
-//left_drive_FWD();
-//
-//for( uint32_t ii = 0; ii < 2000000 ; ii++){}
-
-//right_brake();
-//left_brake();
-//
-for( uint32_t ii = 0; ii < 2000000 ; ii++){}
-right_drive_Back();
-left_drive_FWD();
-//right_drive_FWD();
 
 
 
 ////////////////////////////////////////////////////////////////////////////
 //QEI
 
-// Set the clocking to run directly from the crystal.
-SysCtlClockSet(SYSCTL_SYSDIV_4|SYSCTL_USE_PLL|SYSCTL_XTAL_16MHZ|SYSCTL_OSC_MAIN);
-
-// Enable QEI Peripherals
-SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
-SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI0);
-
 //Unlock GPIOD7 - Like PF0 its used for NMI - Without this step it doesn't work
 HWREG(GPIO_PORTD_BASE + GPIO_O_LOCK) = GPIO_LOCK_KEY; //In Tiva include this is the same as "_DD" in older versions (0x4C4F434B)
 HWREG(GPIO_PORTD_BASE + GPIO_O_CR) |= 0x80;
+HWREG(GPIO_PORTD_BASE + GPIO_O_AFSEL) &= ~0x80;
+HWREG(GPIO_PORTD_BASE + GPIO_O_DEN) |= 0x80;
 HWREG(GPIO_PORTD_BASE + GPIO_O_LOCK) = 0;
+
+IntMasterEnable();
+
 
 //Set Pins to be PHA0 and PHB0
 GPIOPinConfigure(GPIO_PD6_PHA0);
@@ -141,38 +145,101 @@ QEIDisable(QEI0_BASE);
 QEIIntDisable(QEI0_BASE,QEI_INTERROR | QEI_INTDIR | QEI_INTTIMER | QEI_INTINDEX);
 
 // Configure quadrature encoder, use an arbitrary top limit of 1000
-QEIConfigure(QEI0_BASE, (QEI_CONFIG_CAPTURE_A_B  | QEI_CONFIG_NO_RESET  | QEI_CONFIG_QUADRATURE | QEI_CONFIG_NO_SWAP), 1000);
+QEIConfigure(QEI0_BASE, (QEI_CONFIG_CAPTURE_A_B  | QEI_CONFIG_NO_RESET  | QEI_CONFIG_QUADRATURE | QEI_CONFIG_NO_SWAP), 64);
 
 // Enable the quadrature encoder.
 QEIEnable(QEI0_BASE);
 
 //Set position to a middle value so we can see if things are working
-QEIPositionSet(QEI0_BASE, 500);
-
-
-
-
+QEIPositionSet(QEI0_BASE, 32);
+QEIVelocityConfigure(QEI0_BASE, QEI_VELDIV_1, 1000);
+QEIVelocityEnable(QEI0_BASE);
 
 /// set up interrupt function pointer
-QEIIntRegister(uint32_t ui32Base, *QEIDirectionGet(QEI0_BASE));
+QEIIntRegister(QEI0_BASE, QEI0_handler);
 
 
 QEIIntEnable(QEI0_BASE, QEI_INTDIR);
 
 
 
+////////////////////////////////////////////////////////////////////
+//UART
+
+GPIOPinConfigure(GPIO_PA0_U0RX);
+GPIOPinConfigure(GPIO_PA1_U0TX);
+GPIOPinTypeUART(GPIO_PORTA_BASE, (GPIO_PIN_0 | GPIO_PIN_1));
+UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 9600,
+     UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
+     UART_CONFIG_PAR_NONE);
+
+
+// Finally, we can send data.  To send a single character, such as the letter 'e,' we use:
+
+// UARTCharPut(UART0_BASE,'e');
+
+// To send multiple characters, such as numbers, we need to send multiple characters.  We can do this using a string and a for loop:
+
+// sprintf(strToSend,"%d\r\n",ui32value);
+// for(i = 0; (strToSend[i] != '\0'); i++)
+     // UARTCharPut(UART0_BASE,strToSend[i]);
+
+//////////////////////////////////////////////////////
 
 
 
-///////////////////////////////
+
+    uint32_t cnt = 0;
+    while(1)
+    {
+        //////////////////////      Drive forward      ///////////////////////
+        clock_Wh1 = QEIVelocityGet(QEI0_BASE);
+        right_drive_FWD();
+
+        left_drive_Back();
+       // cnt = clock_Wh1;
+        for( uint32_t ii = 0; ii < 5000000 ; ii++){}
+        clock_Wh1 = QEIVelocityGet(QEI0_BASE);
+        right_brake();
+        left_brake();
+        //left_drive_FWD();
+        //
+        //for( uint32_t ii = 0; ii < 2000000 ; ii++){}
+
+        //right_brake();
+        //left_brake();
+        //
+        for( uint32_t ii = 0; ii < 2000000 ; ii++){}
+        right_drive_Back();
+        left_drive_FWD();
+        //right_drive_FWD();
+        for( uint32_t ii = 0; ii < 5000000 ; ii++){}
+
+    }
+
+}
+
+void QEI0_handler(void)
+{
+    /* if((QEI0[QEI_RIS] & QEI_INT_TIMER) != 0){
+        QEI0[QEI_ISC] |= QEI_INT_TIMER;
+        clock_Wh1 = QEI0[QEI_TIME];
+        speed_Wh1 = QEI0[QEI_SPEED];
+    }
+
+    if((QEI0[QEI_RIS] & QEI_INT_DIR) != 0){
+        QEI0[QEI_ISC] |= QEI_INT_DIR;
+        direction_Wh1 = (QEI0[QEI_STAT] & QEI_STAT_DIR);
+    } */
+
+   // stat = ( QEI_INTTIMER & QEIIntStatus(QEI0_BASE, true));
+
+    QEIIntClear(QEI0_BASE, QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX);
 
 
+    clock_Wh2 = QEIPositionGet(QEI0_BASE);
+    speed_Wh1 = QEIDirectionGet(QEI0_BASE);
 
-	while(1)
-	{
-
-
-	}
 
 }
 
