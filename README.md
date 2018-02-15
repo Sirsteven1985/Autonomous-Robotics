@@ -13,17 +13,23 @@
 	
 * Lab 3:
 
--ECPE155_prelab3_SG
+-lab3_QEI
 
--vuong_prelab3
+-Lab3 Direct Register Writes
+
+-Motor Control\sg_prelab\ECPE155_prelab3_SG
+
+-Motor Control\sv_prelab\vuong_prelab3 and compilation results
 
 * Lab 2:
 
 -Steve_G_prelab 2.docx
 
+-PWM_Lab2_Main.c
+
 -vuong_prelab2.docx
 
--PWM_Lab2_Main.c
+-Lab2 Direct Register Writes
 
 * Worksheet 2 part 2:
 
