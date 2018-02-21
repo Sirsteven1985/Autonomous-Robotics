@@ -36,6 +36,7 @@ volatile    uint32_t clock_Wh1, clock_Wh2;
 volatile    uint32_t speed_Wh1, speed_Wh2;
 volatile    int32_t direction_Wh1, direction_Wh2;
 volatile    uint32_t RPM_Wh1, RPM_Wh2;
+volatile    uint32_t R_SPD, L_SPD;
 const       uint32_t ppr = 63;
 const       uint32_t load = 50;
 const       uint32_t L = 3;
@@ -60,6 +61,8 @@ int main(void)
 	// Enable QEI Peripherals
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI0);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI1);
 	//
 	GPIOPinTypePWM(GPIO_PORTB_BASE, ( (GPIO_PIN_6) | (GPIO_PIN_7)));
 	//
@@ -85,11 +88,14 @@ int main(void)
 	// microseconds. For a 20 MHz clock, this translates to 400 clock ticks.
 	// Use this value to set the period.
 	//
+	R_SPD = 375;
+	L_SPD = 375;
+
 	PWMGenPeriodSet(PWM_BASE_0, PWM_GEN_0, 400);
 	//
 	// Set the pulse width of PWM0 for a 25% duty cycle.
 	//
-	PWMPulseWidthSet(PWM_BASE_0, PWM_OUT_0, 300);
+	PWMPulseWidthSet(PWM_BASE_0, PWM_OUT_0, R_SPD);   // Right Wheel Speed Control
 	//
 	// Set the pulse width of PWM1 for a 75% duty cycle.
 	//
@@ -99,7 +105,7 @@ int main(void)
 	//
 	// Set the pulse width of PWM0 for a 25% duty cycle.
 	//
-	PWMPulseWidthSet(PWM_BASE_0, PWM_OUT_1, 300);
+	PWMPulseWidthSet(PWM_BASE_0, PWM_OUT_1, L_SPD);   // Left Wheel Speed Control
 	//
 	// Set the pulse width of PWM1 for a 75% duty cycle.
 	PWMGenEnable(PWM_BASE_0, PWM_GEN_0);
@@ -108,8 +114,7 @@ int main(void)
 	//
 	PWMOutputState(PWM_BASE_0, (PWM_OUT_0_BIT | PWM_OUT_1_BIT), true);
 
-	////////////////////////////////////////////////////////////////////////////
-	//QEI
+	/////////////////////////////////    QEI     /////////////////////////////////////////////
 
 	//Unlock GPIOD7 - Like PF0 its used for NMI - Without this step it doesn't work
 	HWREG(GPIO_PORTD_BASE + GPIO_O_LOCK) = GPIO_LOCK_KEY; //In Tiva include this is the same as "_DD" in older versions (0x4C4F434B)
@@ -118,35 +123,56 @@ int main(void)
 	HWREG(GPIO_PORTD_BASE + GPIO_O_DEN) |= 0x80;
 	HWREG(GPIO_PORTD_BASE + GPIO_O_LOCK) = 0;
 
-	//Set Pins to be PHA0 and PHB0
+	//Set Pins to be PHA0 and PHB0 (Module 0 Phase A and Phase B)
 	GPIOPinConfigure(GPIO_PD6_PHA0);
 	GPIOPinConfigure(GPIO_PD7_PHB0);
 
+    //Set Pins to be PHA1 and PHB1 (Module 1 Phase A and Phase B)
+    GPIOPinConfigure(GPIO_PC5_PHA1);
+    GPIOPinConfigure(GPIO_PC6_PHB1);
+
 	//Set GPIO pins for QEI. PhA0 -> PD6, PhB0 ->PD7. I believe this sets the pull up and makes them inputs
 	GPIOPinTypeQEI(GPIO_PORTD_BASE, GPIO_PIN_6 |  GPIO_PIN_7);
+    GPIOPinTypeQEI(GPIO_PORTC_BASE, GPIO_PIN_5 |  GPIO_PIN_6);
 
 	//Disable peripheral and interrupts before configuration
 	QEIDisable(QEI0_BASE);
+	QEIDisable(QEI1_BASE);
+
 	QEIIntDisable(QEI0_BASE,QEI_INTERROR | QEI_INTDIR | QEI_INTTIMER | QEI_INTINDEX);
+	QEIIntDisable(QEI1_BASE,QEI_INTERROR | QEI_INTDIR | QEI_INTTIMER | QEI_INTINDEX);
 
     IntMasterEnable();  // Allows for interrupts to occur
 
 	// Configure quadrature encoder, use an arbitrary top limit of 1000
 	QEIConfigure(QEI0_BASE, (QEI_CONFIG_CAPTURE_A_B  | QEI_CONFIG_NO_RESET  | QEI_CONFIG_QUADRATURE | QEI_CONFIG_NO_SWAP), 64);
+    QEIConfigure(QEI1_BASE, (QEI_CONFIG_CAPTURE_A_B  | QEI_CONFIG_NO_RESET  | QEI_CONFIG_QUADRATURE | QEI_CONFIG_NO_SWAP), 64);
 
 	// Enable the quadrature encoder.
 	QEIEnable(QEI0_BASE);
+    QEIEnable(QEI1_BASE);
 
 	//Set position to a middle value so we can see if things are working
 	QEIPositionSet(QEI0_BASE, 32);
+    QEIPositionSet(QEI1_BASE, 32);
+
 	uint32_t Clk_period = SysCtlClockGet();
+
 	// Using SYSTEM Clock to get a 1 second period for velocity
 	QEIVelocityConfigure(QEI0_BASE, QEI_VELDIV_1, Clk_period);
 	QEIVelocityEnable(QEI0_BASE);
 
+    // Using SYSTEM Clock to get a 1 second period for velocity
+    QEIVelocityConfigure(QEI1_BASE, QEI_VELDIV_1, Clk_period);
+    QEIVelocityEnable(QEI1_BASE);
+
 	/// set up interrupt function pointer
 	QEIIntRegister(QEI0_BASE, QEI0_handler);
 	QEIIntEnable(QEI0_BASE, QEI_INTDIR);
+
+    /// set up interrupt function pointer
+    QEIIntRegister(QEI1_BASE, QEI0_handler);
+    QEIIntEnable(QEI1_BASE, QEI_INTDIR);
 
 	////////////////////////////////////////////////////////////////////
 	//UART
@@ -204,6 +230,7 @@ void QEI0_handler(void)
 
 	RPM_Wh1 = QEIPositionGet(QEI0_BASE);
 	direction_Wh1 = QEIDirectionGet(QEI0_BASE);
+
 
 }
 
