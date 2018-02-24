@@ -7,6 +7,9 @@
 // Libraries Used
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "inc/tm4c123gh6pm.h"
 #include "driverlib\sysctl.h"
 #include "driverlib\gpio.h"
@@ -29,18 +32,21 @@ void left_wheel_REV(void);
 void left_brake(void);
 void left_standby(void);
 void QEI0_handler(void);
+void QEI1_handler(void);
+void CW_rotate_90(void);
+void robot_FWD(void);
 
 // Global Variables
 volatile    uint32_t stat = 0;
 volatile    uint32_t clock_Wh1, clock_Wh2;
 volatile    uint32_t speed_Wh1, speed_Wh2;
 volatile    int32_t direction_Wh1, direction_Wh2;
-volatile    uint32_t RPM_Wh1, RPM_Wh2;
+volatile    uint32_t POS_Wh1, POS_Wh2;
 volatile    uint32_t R_SPD, L_SPD;
 const       uint32_t ppr = 63;
 const       uint32_t load = 50;
-const       uint32_t L = 3;
-const       uint32_t r = 2;
+const       float L = 4.65;
+const       float r = 2;
 
 /**
 * main.c
@@ -49,7 +55,8 @@ int main(void)
 {
 	//Set system clock to 16MHz, Utilize main oscillator
 	SysCtlClockSet(SYSCTL_OSC_MAIN | SYSCTL_USE_OSC | SYSCTL_XTAL_16MHZ);
-
+	// Enable GPIO peripherals
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 	// Enable PWM peripherals
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM0);
@@ -64,8 +71,14 @@ int main(void)
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
     SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI1);
 	//
+
+    /////////////////////////////////    GPIO     ///////////////////////////////////////////
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3)); // LEDS
+    GPIOIntEnable(GPIO_PORTF_BASE, (GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3));
+
+    /////////////////////////////////    PWM     ///////////////////////////////////////////
 	GPIOPinTypePWM(GPIO_PORTB_BASE, ( (GPIO_PIN_6) | (GPIO_PIN_7)));
-	//
+
 	SysCtlPWMClockSet(SYSCTL_PWMDIV_16);
 	// Wait for the PWM0 module to be ready.
 	GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1) | (GPIO_PIN_2) | (GPIO_PIN_3)  | (GPIO_PIN_4) | (GPIO_PIN_5) ) );
@@ -73,7 +86,7 @@ int main(void)
 	GPIOIntEnable(GPIO_PORTB_BASE, ( (GPIO_PIN_0) | (GPIO_PIN_1) | (GPIO_PIN_2) | (GPIO_PIN_3)  | (GPIO_PIN_4) | (GPIO_PIN_5) | (GPIO_PIN_6) | (GPIO_PIN_7) ) );
 	//
 	GPIOPinConfigure( GPIO_PB6_M0PWM0 );   // Located in PinMap.h
-	GPIOPinConfigure( GPIO_PB7_M0PWM1 ); // Located in PinMap.h
+	GPIOPinConfigure( GPIO_PB7_M0PWM1 );   // Located in PinMap.h
 
 	while(!SysCtlPeripheralReady(SYSCTL_PERIPH_QEI0))
 	{ }
@@ -87,31 +100,27 @@ int main(void)
 	// Set the period. For a 50 KHz frequency, the period = 1/50,000, or 20
 	// microseconds. For a 20 MHz clock, this translates to 400 clock ticks.
 	// Use this value to set the period.
-	//
-	R_SPD = 375;
-	L_SPD = 375;
 
+	// initializing the speed to 375/400 = 94%
+	R_SPD = 300;
+	L_SPD = 300;
+	// Set the load value of PWM0 generator
 	PWMGenPeriodSet(PWM_BASE_0, PWM_GEN_0, 400);
 	//
-	// Set the pulse width of PWM0 for a 25% duty cycle.
-	//
+	// Set the pulse width of PWM0
 	PWMPulseWidthSet(PWM_BASE_0, PWM_OUT_0, R_SPD);   // Right Wheel Speed Control
 	//
-	// Set the pulse width of PWM1 for a 75% duty cycle.
-	//
-	//PWMPulseWidthSet(PWM_BASE, PWM_OUT_1, 300);
-
+	// Set the load value of PWM1 generator
 	PWMGenPeriodSet(PWM_BASE_0, PWM_GEN_1, 400);
 	//
-	// Set the pulse width of PWM0 for a 25% duty cycle.
-	//
+	// Set the pulse width of PWM1
 	PWMPulseWidthSet(PWM_BASE_0, PWM_OUT_1, L_SPD);   // Left Wheel Speed Control
 	//
-	// Set the pulse width of PWM1 for a 75% duty cycle.
+	// Enable Gen 1 and Gen 0
 	PWMGenEnable(PWM_BASE_0, PWM_GEN_0);
+    //PWMGenEnable(PWM_BASE_0, PWM_GEN_0 | PWM_GEN_1);
 	//
-	// Enable the outputs.
-	//
+	// Enable the outputs
 	PWMOutputState(PWM_BASE_0, (PWM_OUT_0_BIT | PWM_OUT_1_BIT), true);
 
 	/////////////////////////////////    QEI     /////////////////////////////////////////////
@@ -132,8 +141,8 @@ int main(void)
     GPIOPinConfigure(GPIO_PC6_PHB1);
 
 	//Set GPIO pins for QEI. PhA0 -> PD6, PhB0 ->PD7. I believe this sets the pull up and makes them inputs
-	GPIOPinTypeQEI(GPIO_PORTD_BASE, GPIO_PIN_6 |  GPIO_PIN_7);
-    GPIOPinTypeQEI(GPIO_PORTC_BASE, GPIO_PIN_5 |  GPIO_PIN_6);
+	GPIOPinTypeQEI(GPIO_PORTD_BASE, GPIO_PIN_6 |  GPIO_PIN_7);  // Left wheel QEI
+    GPIOPinTypeQEI(GPIO_PORTC_BASE, GPIO_PIN_5 |  GPIO_PIN_6);  // Right wheel QEI
 
 	//Disable peripheral and interrupts before configuration
 	QEIDisable(QEI0_BASE);
@@ -145,34 +154,34 @@ int main(void)
     IntMasterEnable();  // Allows for interrupts to occur
 
 	// Configure quadrature encoder, use an arbitrary top limit of 1000
-	QEIConfigure(QEI0_BASE, (QEI_CONFIG_CAPTURE_A_B  | QEI_CONFIG_NO_RESET  | QEI_CONFIG_QUADRATURE | QEI_CONFIG_NO_SWAP), 64);
-    QEIConfigure(QEI1_BASE, (QEI_CONFIG_CAPTURE_A_B  | QEI_CONFIG_NO_RESET  | QEI_CONFIG_QUADRATURE | QEI_CONFIG_NO_SWAP), 64);
+	QEIConfigure(QEI0_BASE, (QEI_CONFIG_CAPTURE_A_B  | QEI_CONFIG_NO_RESET  | QEI_CONFIG_QUADRATURE | QEI_CONFIG_NO_SWAP), 127);
+    QEIConfigure(QEI1_BASE, (QEI_CONFIG_CAPTURE_A_B  | QEI_CONFIG_NO_RESET  | QEI_CONFIG_QUADRATURE | QEI_CONFIG_NO_SWAP), 127);
 
 	// Enable the quadrature encoder.
 	QEIEnable(QEI0_BASE);
     QEIEnable(QEI1_BASE);
 
 	//Set position to a middle value so we can see if things are working
-	QEIPositionSet(QEI0_BASE, 32);
-    QEIPositionSet(QEI1_BASE, 32);
+	QEIPositionSet(QEI0_BASE, 0);
+    QEIPositionSet(QEI1_BASE, 0);
 
 	uint32_t Clk_period = SysCtlClockGet();
 
 	// Using SYSTEM Clock to get a 1 second period for velocity
-	QEIVelocityConfigure(QEI0_BASE, QEI_VELDIV_1, Clk_period);
+	QEIVelocityConfigure(QEI0_BASE, QEI_VELDIV_2, Clk_period);
 	QEIVelocityEnable(QEI0_BASE);
 
     // Using SYSTEM Clock to get a 1 second period for velocity
-    QEIVelocityConfigure(QEI1_BASE, QEI_VELDIV_1, Clk_period);
+    QEIVelocityConfigure(QEI1_BASE, QEI_VELDIV_2, Clk_period);
     QEIVelocityEnable(QEI1_BASE);
 
 	/// set up interrupt function pointer
 	QEIIntRegister(QEI0_BASE, QEI0_handler);
-	QEIIntEnable(QEI0_BASE, QEI_INTDIR);
+	QEIIntEnable(QEI0_BASE, QEI_INTINDEX);
 
     /// set up interrupt function pointer
-    QEIIntRegister(QEI1_BASE, QEI0_handler);
-    QEIIntEnable(QEI1_BASE, QEI_INTDIR);
+    QEIIntRegister(QEI1_BASE, QEI1_handler);
+    QEIIntEnable(QEI1_BASE, QEI_INTINDEX);
 
 	////////////////////////////////////////////////////////////////////
 	//UART
@@ -184,54 +193,92 @@ int main(void)
 	UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
 	UART_CONFIG_PAR_NONE);
 
-	// Finally, we can send data.  To send a single character, such as the letter 'e,' we use:
 
-	// UARTCharPut(UART0_BASE,'e');
+	// Drive straight forward
+	//robot_FWD();
+	left_wheel_FWD();
+	right_wheel_REV();
 
-	// To send multiple characters, such as numbers, we need to send multiple characters.  We can do this using a string and a for loop:
-
-	// sprintf(strToSend,"%d\r\n",ui32value);
-	// for(i = 0; (strToSend[i] != '\0'); i++)
-	// UARTCharPut(UART0_BASE,strToSend[i]);
-
+    // To send multiple characters, such as numbers, we need to send multiple characters.  We can do this using a string and a for loop:
+     // UART EXAMPLE CODE FOR POSITION
+     char strToSend[8];
+     uint32_t i = 0;
+//     POS_Wh1 = QEIPositionGet(QEI0_BASE);
+//     sprintf(strToSend,"%d\r\n",POS_Wh1);
+//     for(i = 0; (strToSend[i] != '\0'); i++)
+//     UARTCharPut(UART0_BASE,strToSend[i]);
+     uint8_t cnt = 0;
 	//////////////////////////////////////////////////////
-
     //////////////////////      MAIN LOOP      ///////////////////////
 	while(1)
 	{
-		//////////////////////      Drive forward      ///////////////////////
+	    GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, ~GPIO_PIN_1);
+	    GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_2, ~GPIO_PIN_2);
 
-		right_wheel_FWD();
-		left_wheel_FWD();
 
-		for( uint32_t ii = 0; ii < 8000000 ; ii++){}
-        //////////////////////      Brake      ///////////////////////
-        speed_Wh1 = QEIVelocityGet(QEI0_BASE);  //  measure speed
+        POS_Wh1 = QEIPositionGet(QEI0_BASE);
+        POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
-		right_brake();
-		left_brake();
+//        sprintf(strToSend,"%d\r\n",POS_Wh1);
+//        for(i = 0; (strToSend[i] != '\0'); i++)
+//        UARTCharPut(UART0_BASE,strToSend[i]);
 
-		for( uint32_t ii = 0; ii < 2000000 ; ii++){}
-        //////////////////////      Drive Backwards      ///////////////////////
-		right_wheel_REV();
-		left_wheel_REV();
+	    if((POS_Wh1 == 49) || (POS_Wh2 == 49))
+	    {
+	        if(POS_Wh1 == 49)
+	        {
+	            left_brake();
+	            QEIPositionSet(QEI0_BASE, 0);
+	            cnt = cnt + 1;
+	        }
+            if(POS_Wh2 == 49)
+            {
+                right_brake();
+                QEIPositionSet(QEI1_BASE, 0);
+                cnt = cnt + 1;
+            }
+	        if (cnt == 2)
+	        {
+	            QEIPositionSet(QEI0_BASE, 0);
+	            QEIPositionSet(QEI1_BASE, 0);
+	            for( uint32_t ii = 0; ii < 8000000 ; ii++){}
+	            left_wheel_FWD();
+	            right_wheel_REV();
+	            cnt = 0;
+	        }
+	    }
 
-		for( uint32_t ii = 0; ii < 5000000 ; ii++){}
-
-		speed_Wh1 = QEIVelocityGet(QEI0_BASE); //   measure speed
 	}
 
 }
 //////////////////////      PROCEDURES / HANDLERS     ///////////////////////
-void QEI0_handler(void)
+void QEI0_handler(void) // Left Wheel
 {
-
 	QEIIntClear(QEI0_BASE, QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX);
 
-	RPM_Wh1 = QEIPositionGet(QEI0_BASE);
-	direction_Wh1 = QEIDirectionGet(QEI0_BASE);
+	//POS_Wh1 = QEIPositionGet(QEI0_BASE);
+	//direction_Wh1 = QEIDirectionGet(QEI0_BASE);
+    GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, GPIO_PIN_1);
+}
 
+void QEI1_handler(void) // Left Wheel
+{
+    QEIIntClear(QEI1_BASE, QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX);
 
+    //POS_Wh1 = QEIPositionGet(QEI0_BASE);
+    //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
+    GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_2, GPIO_PIN_2);
+}
+
+void CW_rotate_90(void)
+{
+
+}
+void robot_FWD(void)
+{
+    //////////////////////      Drive straight forward      ///////////////////////
+    right_wheel_FWD();
+    left_wheel_FWD();
 }
 
 void right_wheel_FWD(void)
@@ -295,3 +342,28 @@ void left_standby(void)
 	GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5) ), ( ~(GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5)));
 }
 
+//////////////////////      Recycle Bin      ///////////////////////
+
+//      for( uint32_t ii = 0; ii < 8000000 ; ii++){}
+//        //////////////////////      Brake      ///////////////////////
+//        speed_Wh1 = QEIVelocityGet(QEI0_BASE);  //  measure speed
+
+        //for( uint32_t ii = 0; ii < 1000000 ; ii++){}
+
+
+//        sprintf(strToSend,"%d\r\n",speed_Wh1);
+//        for(i = 0; (strToSend[i] != '\0'); i++)
+//        UARTCharPut(UART0_BASE,strToSend[i]);
+    //    for( uint32_t ii = 0; ii < 1000000 ; ii++){}
+
+//      right_brake();
+//      left_brake();
+//
+//      for( uint32_t ii = 0; ii < 2000000 ; ii++){}
+//        //////////////////////      Drive Backwards      ///////////////////////
+//      right_wheel_REV();
+//      left_wheel_REV();
+//
+//      for( uint32_t ii = 0; ii < 5000000 ; ii++){}
+//
+//      speed_Wh1 = QEIVelocityGet(QEI0_BASE); //   measure speed
