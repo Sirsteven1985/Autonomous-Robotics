@@ -35,13 +35,16 @@ void QEI0_handler(void);
 void QEI1_handler(void);
 void CW_rotate_90(void);
 void robot_FWD(void);
+void FWD_1_foot(void);
 
 // Global Variables
+volatile    uint8_t cnt = 0;
 volatile    uint32_t stat = 0;
 volatile    uint32_t clock_Wh1, clock_Wh2;
 volatile    uint32_t speed_Wh1, speed_Wh2;
 volatile    int32_t direction_Wh1, direction_Wh2;
 volatile    uint32_t POS_Wh1, POS_Wh2;
+volatile    uint32_t IND_Wh1, IND_Wh2 = 0;
 volatile    uint32_t R_SPD, L_SPD;
 const       uint32_t ppr = 63;
 const       uint32_t load = 50;
@@ -55,20 +58,22 @@ int main(void)
 {
 	//Set system clock to 16MHz, Utilize main oscillator
 	SysCtlClockSet(SYSCTL_OSC_MAIN | SYSCTL_USE_OSC | SYSCTL_XTAL_16MHZ);
+
 	// Enable GPIO peripherals
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+
 	// Enable PWM peripherals
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM0);
 
 	// Enable UART Peripherals
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
 
 	// Enable QEI Peripherals
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI0);
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
     SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI1);
 	//
 
@@ -101,7 +106,7 @@ int main(void)
 	// microseconds. For a 20 MHz clock, this translates to 400 clock ticks.
 	// Use this value to set the period.
 
-	// initializing the speed to 375/400 = 94%
+	// initializing the speed to 300/400 = 75%
 	R_SPD = 300;
 	L_SPD = 300;
 	// Set the load value of PWM0 generator
@@ -196,8 +201,7 @@ int main(void)
 
 	// Drive straight forward
 	//robot_FWD();
-	left_wheel_FWD();
-	right_wheel_REV();
+
 
     // To send multiple characters, such as numbers, we need to send multiple characters.  We can do this using a string and a for loop:
      // UART EXAMPLE CODE FOR POSITION
@@ -207,7 +211,8 @@ int main(void)
 //     sprintf(strToSend,"%d\r\n",POS_Wh1);
 //     for(i = 0; (strToSend[i] != '\0'); i++)
 //     UARTCharPut(UART0_BASE,strToSend[i]);
-     uint8_t cnt = 0;
+     IND_Wh1 = 0;
+     IND_Wh2 = 0;
 	//////////////////////////////////////////////////////
     //////////////////////      MAIN LOOP      ///////////////////////
 	while(1)
@@ -215,39 +220,8 @@ int main(void)
 	    GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, ~GPIO_PIN_1);
 	    GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_2, ~GPIO_PIN_2);
 
-
-        POS_Wh1 = QEIPositionGet(QEI0_BASE);
-        POS_Wh2 = QEIPositionGet(QEI1_BASE);
-
-//        sprintf(strToSend,"%d\r\n",POS_Wh1);
-//        for(i = 0; (strToSend[i] != '\0'); i++)
-//        UARTCharPut(UART0_BASE,strToSend[i]);
-
-	    if((POS_Wh1 == 49) || (POS_Wh2 == 49))
-	    {
-	        if(POS_Wh1 == 49)
-	        {
-	            left_brake();
-	            QEIPositionSet(QEI0_BASE, 0);
-	            cnt = cnt + 1;
-	        }
-            if(POS_Wh2 == 49)
-            {
-                right_brake();
-                QEIPositionSet(QEI1_BASE, 0);
-                cnt = cnt + 1;
-            }
-	        if (cnt == 2)
-	        {
-	            QEIPositionSet(QEI0_BASE, 0);
-	            QEIPositionSet(QEI1_BASE, 0);
-	            for( uint32_t ii = 0; ii < 8000000 ; ii++){}
-	            left_wheel_FWD();
-	            right_wheel_REV();
-	            cnt = 0;
-	        }
-	    }
-
+	    CW_rotate_90();
+	    FWD_1_foot();
 	}
 
 }
@@ -259,6 +233,7 @@ void QEI0_handler(void) // Left Wheel
 	//POS_Wh1 = QEIPositionGet(QEI0_BASE);
 	//direction_Wh1 = QEIDirectionGet(QEI0_BASE);
     GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, GPIO_PIN_1);
+    IND_Wh1 = IND_Wh1 + 1;
 }
 
 void QEI1_handler(void) // Left Wheel
@@ -268,11 +243,101 @@ void QEI1_handler(void) // Left Wheel
     //POS_Wh1 = QEIPositionGet(QEI0_BASE);
     //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
     GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_2, GPIO_PIN_2);
+    IND_Wh2 = IND_Wh2 + 1;
 }
 
 void CW_rotate_90(void)
 {
+    QEIPositionSet(QEI0_BASE, 0);
+    QEIPositionSet(QEI1_BASE, 0);
+    left_wheel_FWD();
+    right_wheel_REV();
 
+    while((POS_Wh1 != 50) && (POS_Wh2 != 50))
+    {
+        POS_Wh1 = QEIPositionGet(QEI0_BASE);
+        POS_Wh2 = QEIPositionGet(QEI1_BASE);
+
+        if(POS_Wh1 == 50)
+        {
+           left_brake();
+           QEIPositionSet(QEI0_BASE, 0);
+           cnt = cnt + 1;
+        }
+        if(POS_Wh2 == 50)
+        {
+           right_brake();
+           QEIPositionSet(QEI1_BASE, 0);
+           cnt = cnt + 1;
+        }
+        if (cnt == 2)
+        {
+           cnt = 0;
+           break;
+        }
+    }
+}
+void CCW_rotate_90(void)
+{
+    QEIPositionSet(QEI0_BASE, 0);
+    QEIPositionSet(QEI1_BASE, 0);
+    left_wheel_REV();
+    right_wheel_FWD();
+    while((POS_Wh1 != 50) && (POS_Wh2 != 50))
+    {
+        POS_Wh1 = QEIPositionGet(QEI0_BASE);
+        POS_Wh2 = QEIPositionGet(QEI1_BASE);
+
+        if(POS_Wh1 == 50)
+        {
+           left_brake();
+           QEIPositionSet(QEI0_BASE, 0);
+           cnt = cnt + 1;
+        }
+        if(POS_Wh2 == 50)
+        {
+           right_brake();
+           QEIPositionSet(QEI1_BASE, 0);
+           cnt = cnt + 1;
+        }
+        if (cnt == 2)
+        {
+           cnt = 0;
+           break;
+        }
+    }
+}
+void FWD_1_foot(void)
+{
+
+    QEIPositionSet(QEI0_BASE, 0);
+    QEIPositionSet(QEI1_BASE, 0);
+    left_wheel_FWD();
+    right_wheel_FWD();
+    IND_Wh1 = 0;
+    IND_Wh2 = 0;
+    while((IND_Wh1 != 207) && (IND_Wh2 != 207))
+    {
+        if(IND_Wh1 == 207)
+        {
+           left_brake();
+           QEIPositionSet(QEI0_BASE, 0);
+           cnt = cnt + 1;
+        }
+        if(IND_Wh2 == 207)
+        {
+           right_brake();
+           QEIPositionSet(QEI1_BASE, 0);
+           cnt = cnt + 1;
+        }
+        if (cnt == 2)
+        {
+           IND_Wh1 = 0;
+           IND_Wh2 = 0;
+           cnt = 0;
+           break;
+        }
+    }
 }
 void robot_FWD(void)
 {
