@@ -6,6 +6,8 @@
 * Files to grade for labs/worksheets:
 
 * Lab 6:
+
+* Workssheet 3
 	
 * Lab 5:
 		
