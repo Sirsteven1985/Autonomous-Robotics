@@ -38,13 +38,13 @@ void robot_FWD(void);
 void FWD_1_foot(void);
 
 // Global Variables
-volatile    uint8_t cnt = 0;
+volatile    uint32_t cnt = 0;
 volatile    uint32_t stat = 0;
 volatile    uint32_t clock_Wh1, clock_Wh2;
 volatile    uint32_t speed_Wh1, speed_Wh2;
 volatile    int32_t direction_Wh1, direction_Wh2;
 volatile    uint32_t POS_Wh1, POS_Wh2;
-volatile    uint32_t IND_Wh1, IND_Wh2 = 0;
+volatile    uint32_t IND_Wh1, IND_Wh2;
 volatile    uint32_t R_SPD, L_SPD;
 const       uint32_t ppr = 63;
 const       uint32_t load = 50;
@@ -107,8 +107,8 @@ int main(void)
 	// Use this value to set the period.
 
 	// initializing the speed to 300/400 = 75%
-	R_SPD = 300;
-	L_SPD = 300;
+	R_SPD = 250;
+	L_SPD = 250;
 	// Set the load value of PWM0 generator
 	PWMGenPeriodSet(PWM_BASE_0, PWM_GEN_0, 400);
 	//
@@ -194,9 +194,7 @@ int main(void)
 	GPIOPinConfigure(GPIO_PA0_U0RX);
 	GPIOPinConfigure(GPIO_PA1_U0TX);
 	GPIOPinTypeUART(GPIO_PORTA_BASE, (GPIO_PIN_0 | GPIO_PIN_1));
-	UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 9600,
-	UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
-	UART_CONFIG_PAR_NONE);
+	UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 9600, UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE);
 
 
 	// Drive straight forward
@@ -217,22 +215,31 @@ int main(void)
     //////////////////////      MAIN LOOP      ///////////////////////
 	while(1)
 	{
-	    GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, ~GPIO_PIN_1);
-	    GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_2, ~GPIO_PIN_2);
+	    uint32_t ii;
 
 	    CW_rotate_90();
+	    right_brake();
+	    left_brake();
+	    for(ii = 0; ii < 1000000; ii++){}
 	    FWD_1_foot();
+	    right_brake();
+	    left_brake();
+	    for(ii = 0; ii < 1000000; ii++){}
+
+
 	}
 
 }
 //////////////////////      PROCEDURES / HANDLERS     ///////////////////////
+//volatile uint8_t QEI_INT_INDEX_Flag1;
+//volatile uint8_t QEI_INT_INDEX_Flag0;
+
 void QEI0_handler(void) // Left Wheel
 {
 	QEIIntClear(QEI0_BASE, QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX);
 
 	//POS_Wh1 = QEIPositionGet(QEI0_BASE);
 	//direction_Wh1 = QEIDirectionGet(QEI0_BASE);
-    GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, GPIO_PIN_1);
     IND_Wh1 = IND_Wh1 + 1;
 }
 
@@ -242,12 +249,12 @@ void QEI1_handler(void) // Left Wheel
 
     //POS_Wh1 = QEIPositionGet(QEI0_BASE);
     //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
-    GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_2, GPIO_PIN_2);
     IND_Wh2 = IND_Wh2 + 1;
 }
 
 void CW_rotate_90(void)
 {
+    cnt = 0;
     QEIPositionSet(QEI0_BASE, 0);
     QEIPositionSet(QEI1_BASE, 0);
     left_wheel_FWD();
@@ -272,13 +279,15 @@ void CW_rotate_90(void)
         }
         if (cnt == 2)
         {
-           cnt = 0;
+           left_brake();
+           right_brake();
            break;
         }
     }
 }
 void CCW_rotate_90(void)
 {
+    cnt = 0;
     QEIPositionSet(QEI0_BASE, 0);
     QEIPositionSet(QEI1_BASE, 0);
     left_wheel_REV();
@@ -309,34 +318,43 @@ void CCW_rotate_90(void)
 }
 void FWD_1_foot(void)
 {
-
+    cnt = 0;
     QEIPositionSet(QEI0_BASE, 0);
     QEIPositionSet(QEI1_BASE, 0);
     left_wheel_FWD();
     right_wheel_FWD();
     IND_Wh1 = 0;
     IND_Wh2 = 0;
-    while((IND_Wh1 != 207) && (IND_Wh2 != 207))
+    POS_Wh1 = QEIPositionGet(QEI0_BASE);
+    POS_Wh2 = QEIPositionGet(QEI1_BASE);
+
+    while(cnt != 2)
     {
-        if(IND_Wh1 == 207)
+        POS_Wh1 = QEIPositionGet(QEI0_BASE);
+        POS_Wh2 = QEIPositionGet(QEI1_BASE);
+
+        if(POS_Wh1 == 127)
         {
-           left_brake();
-           QEIPositionSet(QEI0_BASE, 0);
-           cnt = cnt + 1;
+            IND_Wh1 = 1;
         }
-        if(IND_Wh2 == 207)
+        if(POS_Wh2 == 1)
         {
-           right_brake();
-           QEIPositionSet(QEI1_BASE, 0);
-           cnt = cnt + 1;
+            IND_Wh2 = 1;
         }
-        if (cnt == 2)
+
+        if((POS_Wh1 == 90) && (IND_Wh1 == 1))
         {
-           IND_Wh1 = 0;
-           IND_Wh2 = 0;
-           cnt = 0;
-           break;
+            left_brake();
+            QEIPositionSet(QEI0_BASE, 0);
+            cnt = cnt + 1;
         }
+        if((POS_Wh2 == (127-90)) && (IND_Wh2 == 1))
+        {
+            right_brake();
+            QEIPositionSet(QEI1_BASE, 0);
+            cnt = cnt + 1;
+        }
+
     }
 }
 void robot_FWD(void)
