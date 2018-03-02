@@ -7,7 +7,12 @@
 
 * Lab 6:
 
-* Workssheet 3
+* Worksheet 3
+	-dminT_theta.myFirstControlPorgram
+	-ECPE 155 Worksheet 3.docx
+	-Hugs.m
+	-str8_shot.m
+	-TangentBug.m
 	
 * Lab 5:
 		
