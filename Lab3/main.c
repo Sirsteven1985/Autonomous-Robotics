@@ -62,14 +62,17 @@ int main(void)
     {
         uint32_t ii;
 
-        CW_rotate_90();
-        right_brake();
-        left_brake();
-        for(ii = 0; ii < 1000000; ii++){}
-        FWD_1_foot();
-        right_brake();
-        left_brake();
-        for(ii = 0; ii < 1000000; ii++){}
+        //robot forward
+        robot_FWD();
+//        CW_rotate_90();
+//        right_brake();
+//        left_brake();
+//        for(ii = 0; ii < 1000000; ii++){}
+//        FWD_1_foot();
+//        right_brake();
+//        left_brake();
+        for(ii = 0; ii < 10000000; ii++){}
+
 
 
     }
@@ -265,18 +268,18 @@ void CW_rotate_90(void)
     left_wheel_FWD();
     right_wheel_REV();
 
-    while((POS_Wh1 != 50) && (POS_Wh2 != 50)){
+    while((POS_Wh1 != 52) && (POS_Wh2 != 52)){
 
         POS_Wh1 = QEIPositionGet(QEI0_BASE);
         POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
-        if(POS_Wh1 == 50){
+        if(POS_Wh1 == 52){
            left_brake();
            QEIPositionSet(QEI0_BASE, 0);
            cnt = cnt + 1;
         }
 
-        if(POS_Wh2 == 50){
+        if(POS_Wh2 == 52){
            right_brake();
            QEIPositionSet(QEI1_BASE, 0);
            cnt = cnt + 1;

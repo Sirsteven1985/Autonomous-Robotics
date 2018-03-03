@@ -49,7 +49,11 @@ const       float L = 4.65;
 const       float r = 2;
 
 // Sensors
-volatile    uint32_t r_n_l_bumpSensors;
+volatile    uint32_t r_bumpSensors;
+volatile    uint32_t l_bumpSensors;
+
+uint32_t ii = 0;
+uint32_t i = 0;
 
 int main(void)
 {
@@ -60,8 +64,7 @@ int main(void)
     initQEI();
     initUART0();
 
-    uint32_t ii = 0;
-    uint32_t i = 0;
+
 
     //To send multiple characters, such as numbers, we need to send multiple characters.  We can do this using a string and a for loop:
     //UART EXAMPLE CODE FOR POSITION
@@ -75,6 +78,8 @@ int main(void)
     IND_Wh1 = 0;
     IND_Wh2 = 0;
 
+
+
     while(1)
     {
 
@@ -87,25 +92,87 @@ int main(void)
         //right_brake();
         //left_brake();
         //for(ii = 0; ii < 1000000; ii++){}
-        if(!r_n_l_bumpSensors){
+
+        robot_FWD();
+
+        if((r_bumpSensors == 0) && (l_bumpSensors == 0x2)){
+            //blink leds when bumpers make contact PD2 right switch
+            GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | ~GPIO_PIN_2));
+            //reverse
+            all_wheel_REV();
+            for(i = 0; i < 2000000; i++)
+            {}
+            //ccw rotate
+            CCW_rotate_90(true);
+
+
+        }else if((l_bumpSensors == 0)  && (r_bumpSensors == 0x4)){
+            //blink leds when bumpers make contact PD1 left switch
+            GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (~GPIO_PIN_1 | GPIO_PIN_2));
+            //reverse
+            all_wheel_REV();
+            for(i = 0; i < 2000000; i++)
+            {}
+            //cw rotate
+            CW_rotate_90(true);
+
+
+        }else if((r_bumpSensors == 0) && (l_bumpSensors == 0)){
             //blink leds when bumpers make contact
-            GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, GPIO_PIN_1);
-            for(i = 0; i < 150000; i++)
+            GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | GPIO_PIN_2));
+            // Reverse
+            all_wheel_REV();
+            for(i = 0; i < 2000000; i++)
             {}
-            GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, ~GPIO_PIN_1);
-            for(i = 0; i < 150000; i++)
-            {}
-        }else{
-            GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, ~GPIO_PIN_1);
+            //cw rotate
+            CW_rotate_90(true);
+            CW_rotate_90(true);
+
+
         }
+        else{
 
-
-
+            GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), ~(GPIO_PIN_1 | GPIO_PIN_2));
+        }
 
 
     }
 
 }
+
+/**************************************HANDLERS**************************************/
+void QEI0_handler(void){ // Left Wheel
+
+    QEIIntClear(QEI0_BASE, QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX);
+
+    //POS_Wh1 = QEIPositionGet(QEI0_BASE);
+    //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
+    IND_Wh1 = IND_Wh1 + 1;
+
+}
+
+void QEI1_handler(void){ // Left Wheel
+
+    QEIIntClear(QEI1_BASE, QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX);
+
+    //POS_Wh1 = QEIPositionGet(QEI0_BASE);
+    //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
+    IND_Wh2 = IND_Wh2 + 1;
+
+}
+
+void bumpSensor_handler(void){
+
+    GPIOIntClear(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
+
+    l_bumpSensors = GPIOPinRead(GPIO_PORTD_BASE, GPIO_PIN_1);
+    r_bumpSensors = GPIOPinRead(GPIO_PORTD_BASE, GPIO_PIN_2);
+
+
+
+}
+
+// SYSCTL initialization
 void initSYSCTL(void){
 
     //Set system clock to 16MHz, Utilize main oscillator
@@ -130,16 +197,20 @@ void initSYSCTL(void){
 
 }
 
+// GPIO initialization
 void initGPIO(void){
 
     // LEDS
-    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3));
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
 
     // bump switches
-    GPIOPinTypeGPIOOutput(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
+    GPIOPinTypeGPIOInput(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
 
-    // Make pins 2 and 4 Falling edge triggered interrupts.
-    GPIOIntTypeSet(GPIO_PORTD_BASE, GPIO_PIN_1 | GPIO_PIN_2, GPIO_FALLING_EDGE);
+    // Make pins 1 and 2 Falling edge triggered interrupts.
+    GPIOIntTypeSet(GPIO_PORTD_BASE, (GPIO_PIN_1 | GPIO_PIN_2), GPIO_RISING_EDGE);
+
+    // Make pins
+    GPIOPadConfigSet(GPIO_PORTD_BASE, (GPIO_PIN_1 | GPIO_PIN_2), GPIO_STRENGTH_12MA, GPIO_PIN_TYPE_STD_WPU);
 
     // Enable the pin interrupts.
     GPIOIntRegister(GPIO_PORTD_BASE, bumpSensor_handler);
@@ -148,13 +219,11 @@ void initGPIO(void){
     GPIOIntClear(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
 
     // Enable interrupts
-    GPIOIntEnable(GPIO_PORTD_BASE, GPIO_PIN_1 | GPIO_PIN_2);
+    GPIOIntEnable(GPIO_PORTD_BASE, (GPIO_PIN_1 | GPIO_PIN_2));
 
 }
 
-
-
-/////////////////////////////////    PWM     ///////////////////////////////////////////
+// PWM0 initialization
 void initPWM0(void){
 
     GPIOPinTypePWM(GPIO_PORTB_BASE, ( (GPIO_PIN_6) | (GPIO_PIN_7)));
@@ -205,6 +274,7 @@ void initPWM0(void){
 
 }
 
+// QEI initialization
 void initQEI(void){
 
     // Unlock GPIOD7 - Like PF0 its used for NMI - Without this step it doesn't work
@@ -269,6 +339,7 @@ void initQEI(void){
 
 }
 
+// UART0 initialization
 void initUART0(void){
 
     GPIOPinConfigure(GPIO_PA0_U0RX);
@@ -280,36 +351,9 @@ void initUART0(void){
 
 
 
-/**************************************PROCEDURES / HANDLERS**************************************/
+/**************************************PROCEDURES**************************************/
 
-void QEI0_handler(void){ // Left Wheel
-
-    QEIIntClear(QEI0_BASE, QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX);
-
-    //POS_Wh1 = QEIPositionGet(QEI0_BASE);
-    //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
-    IND_Wh1 = IND_Wh1 + 1;
-
-}
-
-void QEI1_handler(void){ // Left Wheel
-
-    QEIIntClear(QEI1_BASE, QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX);
-
-    //POS_Wh1 = QEIPositionGet(QEI0_BASE);
-    //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
-    IND_Wh2 = IND_Wh2 + 1;
-
-}
-
-void bumpSensor_handler(void){
-
-    r_n_l_bumpSensors = GPIOPinRead(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
-    GPIOIntClear(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
-
-}
-
-void CW_rotate_90(void)
+void CW_rotate_90(bool CW_Rot_True)
 {
     cnt = 0;
     QEIPositionSet(QEI0_BASE, 0);
@@ -317,34 +361,37 @@ void CW_rotate_90(void)
     left_wheel_FWD();
     right_wheel_REV();
 
-    while((POS_Wh1 != 50) && (POS_Wh2 != 50)){
+    if(CW_Rot_True){
+        while((POS_Wh1 != 50) && (POS_Wh2 != 50)){
 
-        POS_Wh1 = QEIPositionGet(QEI0_BASE);
-        POS_Wh2 = QEIPositionGet(QEI1_BASE);
+            POS_Wh1 = QEIPositionGet(QEI0_BASE);
+            POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
-        if(POS_Wh1 == 50){
-           left_brake();
-           QEIPositionSet(QEI0_BASE, 0);
-           cnt = cnt + 1;
+            if(POS_Wh1 == 50){
+               left_brake();
+               QEIPositionSet(QEI0_BASE, 0);
+               cnt = cnt + 1;
+            }
+
+            if(POS_Wh2 == 50){
+               right_brake();
+               QEIPositionSet(QEI1_BASE, 0);
+               cnt = cnt + 1;
+            }
+
+            if (cnt == 2){
+                cnt = 0;
+                left_brake();
+                right_brake();
+                CW_Rot_True = false;
+            }
+
         }
-
-        if(POS_Wh2 == 50){
-           right_brake();
-           QEIPositionSet(QEI1_BASE, 0);
-           cnt = cnt + 1;
-        }
-
-        if (cnt == 2){
-           left_brake();
-           right_brake();
-           break;
-        }
-
     }
 
 }
 
-void CCW_rotate_90(void){
+void CCW_rotate_90(bool CCW_Rot_True){
 
     cnt = 0;
     QEIPositionSet(QEI0_BASE, 0);
@@ -352,28 +399,32 @@ void CCW_rotate_90(void){
     left_wheel_REV();
     right_wheel_FWD();
 
-    while((POS_Wh1 != 50) && (POS_Wh2 != 50)){
+    if(CCW_Rot_True){
+        while((POS_Wh1 != (127-50)) && (POS_Wh2 != (127-50))){
 
-        POS_Wh1 = QEIPositionGet(QEI0_BASE);
-        POS_Wh2 = QEIPositionGet(QEI1_BASE);
+            POS_Wh1 = QEIPositionGet(QEI0_BASE);
+            POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
-        if(POS_Wh1 == 50){
-           left_brake();
-           QEIPositionSet(QEI0_BASE, 0);
-           cnt = cnt + 1;
+            if(POS_Wh1 == (127-50)){
+               left_brake();
+               QEIPositionSet(QEI0_BASE, 0);
+               cnt = cnt + 1;
+            }
+
+            if(POS_Wh2 == (127-50)){
+               right_brake();
+               QEIPositionSet(QEI1_BASE, 0);
+               cnt = cnt + 1;
+            }
+
+            if (cnt == 2){
+               cnt = 0;
+               left_brake();
+               right_brake();
+               CCW_Rot_True = false;
+            }
+
         }
-
-        if(POS_Wh2 == 50){
-           right_brake();
-           QEIPositionSet(QEI1_BASE, 0);
-           cnt = cnt + 1;
-        }
-
-        if (cnt == 2){
-           cnt = 0;
-           break;
-        }
-
     }
 
 }
@@ -477,6 +528,17 @@ void left_wheel_FWD(void){
 
 void left_wheel_REV(void){
 
+    // Setting the proper pins to drive the motor forward [ IN1 = 0 ; IN2 = 1 ; SB = 1 ]
+    GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_5) ), ( (GPIO_PIN_3) | (GPIO_PIN_5) ));
+    GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4, ~(GPIO_PIN_4));
+
+}
+
+void all_wheel_REV(void){
+
+    // Setting the proper pins to drive the motor in reverse [ IN1 = 1 ; IN2 = 0 ; SB = 1 ]
+    GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1) ), ( (GPIO_PIN_0) | (GPIO_PIN_1) ));
+    GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_2, ~(GPIO_PIN_2));
     // Setting the proper pins to drive the motor forward [ IN1 = 0 ; IN2 = 1 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_5) ), ( (GPIO_PIN_3) | (GPIO_PIN_5) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4, ~(GPIO_PIN_4));
