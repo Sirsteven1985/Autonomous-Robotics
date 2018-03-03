@@ -1,19 +1,9 @@
 
-
-/**
- * main.c
- * ECPE 155 Autonomous Robotics
- * Spring 2018
- * Lab 4 - Bump Sensor
- * Lab Associates:  Paul Vuong
- *                  Steve Guerro
- * 1.   Install rocker switches on robot for use as a bump sensor.
- * 2.   Design and implement basic obstacle avoidance.
- * 3.   After attaching the bump sensors, create source code to have LEDs blink in a particular pattern
- *      for each engagement of the sensors with the use of ISRs.
- * 4.   Once the sensors are functional with the results of the LEDs, create source code to have the
- *      robot adjust its direction once it impacts a surface with the bumper.
- */
+/*  ECPE 155 Lab 3
+    QEI API version
+    Authors: Steve Guerrero and Paul Vuong
+    Feb 6, 2018
+*/
 
 // Libraries Used
 #include <stdint.h>
@@ -48,9 +38,6 @@ const       uint32_t load = 50;
 const       float L = 4.65;
 const       float r = 2;
 
-// Sensors
-volatile    uint32_t r_n_l_bumpSensors;
-
 int main(void)
 {
 
@@ -60,9 +47,6 @@ int main(void)
     initQEI();
     initUART0();
 
-    uint32_t ii = 0;
-    uint32_t i = 0;
-
     //To send multiple characters, such as numbers, we need to send multiple characters.  We can do this using a string and a for loop:
     //UART EXAMPLE CODE FOR POSITION
     //char strToSend[8];
@@ -71,41 +55,27 @@ int main(void)
     //sprintf(strToSend,"%d\r\n",POS_Wh1);
     //for(i = 0; (strToSend[i] != '\0'); i++)
     //UARTCharPut(UART0_BASE,strToSend[i]);
-
     IND_Wh1 = 0;
     IND_Wh2 = 0;
 
     while(1)
     {
+        uint32_t ii;
 
-
-        //CW_rotate_90();
-        //right_brake();
-        //left_brake();
-        //for(ii = 0; ii < 1000000; ii++){}
-        //FWD_1_foot();
-        //right_brake();
-        //left_brake();
-        //for(ii = 0; ii < 1000000; ii++){}
-        if(!r_n_l_bumpSensors){
-            //blink leds when bumpers make contact
-            GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, GPIO_PIN_1);
-            for(i = 0; i < 150000; i++)
-            {}
-            GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, ~GPIO_PIN_1);
-            for(i = 0; i < 150000; i++)
-            {}
-        }else{
-            GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, ~GPIO_PIN_1);
-        }
-
-
-
+        CW_rotate_90();
+        right_brake();
+        left_brake();
+        for(ii = 0; ii < 1000000; ii++){}
+        FWD_1_foot();
+        right_brake();
+        left_brake();
+        for(ii = 0; ii < 1000000; ii++){}
 
 
     }
 
 }
+
 void initSYSCTL(void){
 
     //Set system clock to 16MHz, Utilize main oscillator
@@ -134,21 +104,6 @@ void initGPIO(void){
 
     // LEDS
     GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3));
-
-    // bump switches
-    GPIOPinTypeGPIOOutput(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
-
-    // Make pins 2 and 4 Falling edge triggered interrupts.
-    GPIOIntTypeSet(GPIO_PORTD_BASE, GPIO_PIN_1 | GPIO_PIN_2, GPIO_FALLING_EDGE);
-
-    // Enable the pin interrupts.
-    GPIOIntRegister(GPIO_PORTD_BASE, bumpSensor_handler);
-
-    // Clear interrupts
-    GPIOIntClear(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
-
-    // Enable interrupts
-    GPIOIntEnable(GPIO_PORTD_BASE, GPIO_PIN_1 | GPIO_PIN_2);
 
 }
 
@@ -299,13 +254,6 @@ void QEI1_handler(void){ // Left Wheel
     //POS_Wh1 = QEIPositionGet(QEI0_BASE);
     //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
     IND_Wh2 = IND_Wh2 + 1;
-
-}
-
-void bumpSensor_handler(void){
-
-    r_n_l_bumpSensors = GPIOPinRead(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
-    GPIOIntClear(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
 
 }
 
