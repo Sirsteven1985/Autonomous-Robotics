@@ -36,6 +36,7 @@
 
 // Global Variables
 volatile    uint32_t cnt = 0;
+volatile    uint32_t Clk_period;
 volatile    uint32_t stat = 0;
 volatile    uint32_t clock_Wh1, clock_Wh2;
 volatile    uint32_t speed_Wh1, speed_Wh2;
@@ -45,12 +46,14 @@ volatile    uint32_t IND_Wh1, IND_Wh2;
 volatile    uint32_t R_SPD, L_SPD;
 const       uint32_t ppr = 63;
 const       uint32_t load = 50;
+
 const       float L = 4.65;
 const       float r = 2;
 
-// Sensors
-volatile    uint32_t r_bumpSensors;
-volatile    uint32_t l_bumpSensors;
+// Bump Switches
+volatile    uint16_t r_bumpSensors = 0x4;
+volatile    uint16_t l_bumpSensors = 0x2;
+
 
 uint32_t ii = 0;
 uint32_t i = 0;
@@ -59,16 +62,16 @@ int main(void)
 {
 
     initSYSCTL();
-    initGPIO();
     initPWM0();
     initQEI();
     initUART0();
+    initGPIO();
 
 
 
     //To send multiple characters, such as numbers, we need to send multiple characters.  We can do this using a string and a for loop:
     //UART EXAMPLE CODE FOR POSITION
-    //char strToSend[8];
+    char strToSend[8];
     //uint32_t i = 0;
     //POS_Wh1 = QEIPositionGet(QEI0_BASE);
     //sprintf(strToSend,"%d\r\n",POS_Wh1);
@@ -78,12 +81,12 @@ int main(void)
     IND_Wh1 = 0;
     IND_Wh2 = 0;
 
-
+    speed_Wh1 = QEIVelocityGet(QEI0_BASE);
 
     while(1)
     {
 
-
+        speed_Wh1 = QEIVelocityGet(QEI0_BASE);
         //CW_rotate_90();
         //right_brake();
         //left_brake();
@@ -92,91 +95,97 @@ int main(void)
         //right_brake();
         //left_brake();
         //for(ii = 0; ii < 1000000; ii++){}
+//        POS_Wh1 = QEIPositionGet(QEI0_BASE);
+//        sprintf(strToSend,"%d\r\n",POS_Wh1);
+//        for(i = 0; (strToSend[i] != '\0'); i++)
+//        UARTCharPut(UART0_BASE,strToSend[i]);
 
         robot_FWD();
 
-        if((r_bumpSensors == 0) && (l_bumpSensors == 0x2)){
-            //blink leds when bumpers make contact PD2 right switch
-            GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | ~GPIO_PIN_2));
-            //reverse
-            all_wheel_REV();
-            for(i = 0; i < 2000000; i++)
-            {}
-            //ccw rotate
-            CCW_rotate_90(true);
-
-
-        }else if((l_bumpSensors == 0)  && (r_bumpSensors == 0x4)){
-            //blink leds when bumpers make contact PD1 left switch
-            GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (~GPIO_PIN_1 | GPIO_PIN_2));
-            //reverse
-            all_wheel_REV();
-            for(i = 0; i < 2000000; i++)
-            {}
-            //cw rotate
-            CW_rotate_90(true);
-
-
-        }else if((r_bumpSensors == 0) && (l_bumpSensors == 0)){
-            //blink leds when bumpers make contact
-            GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | GPIO_PIN_2));
-            // Reverse
-            all_wheel_REV();
-            for(i = 0; i < 2000000; i++)
-            {}
-            //cw rotate
-            CW_rotate_90(true);
-            CW_rotate_90(true);
-
-
-        }
-        else{
-
-            GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), ~(GPIO_PIN_1 | GPIO_PIN_2));
-        }
-
-
+        bumper_function();
     }
 
 }
 
 /**************************************HANDLERS**************************************/
 void QEI0_handler(void){ // Left Wheel
-
+    IND_Wh1 = IND_Wh1 + 1;
     QEIIntClear(QEI0_BASE, QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX);
 
     //POS_Wh1 = QEIPositionGet(QEI0_BASE);
     //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
-    IND_Wh1 = IND_Wh1 + 1;
+
 
 }
 
 void QEI1_handler(void){ // Left Wheel
-
+    IND_Wh2 = IND_Wh2 + 1;
     QEIIntClear(QEI1_BASE, QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX);
 
     //POS_Wh1 = QEIPositionGet(QEI0_BASE);
     //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
-    IND_Wh2 = IND_Wh2 + 1;
+
 
 }
 
 void bumpSensor_handler(void){
 
-    GPIOIntClear(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
-
     l_bumpSensors = GPIOPinRead(GPIO_PORTD_BASE, GPIO_PIN_1);
     r_bumpSensors = GPIOPinRead(GPIO_PORTD_BASE, GPIO_PIN_2);
-
-
-
+    GPIOIntClear(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
 }
 
+void bumper_function(void){
+
+    if((r_bumpSensors == 0) && (l_bumpSensors == 0x2)){
+        //blink leds when bumpers make contact PD2 right switch
+        GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | ~GPIO_PIN_2));
+        //reverse
+        all_wheel_REV();
+        for(i = 0; i < 2000000; i++)
+        {}
+        //ccw rotate
+        CCW_rotate_90(true);
+
+
+    }else if((l_bumpSensors == 0)  && (r_bumpSensors == 0x4)){
+        //blink leds when bumpers make contact PD1 left switch
+        GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (~GPIO_PIN_1 | GPIO_PIN_2));
+        //reverse
+        all_wheel_REV();
+        for(i = 0; i < 2000000; i++)
+        {}
+        //cw rotate
+        CW_rotate_90(true);
+
+
+    }else if((r_bumpSensors == 0) && (l_bumpSensors == 0)){
+        //blink leds when bumpers make contact
+        GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | GPIO_PIN_2));
+        // Reverse
+        all_wheel_REV();
+        for(i = 0; i < 2000000; i++)
+        {}
+        //cw rotate
+        CW_rotate_90(true);
+        CW_rotate_90(true);
+
+
+    }
+    else{
+
+        GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), ~(GPIO_PIN_1 | GPIO_PIN_2));
+    }
+    l_bumpSensors = 0x2;
+    r_bumpSensors = 0x4;
+    GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), ~(GPIO_PIN_1 | GPIO_PIN_2));
+
+}
 // SYSCTL initialization
 void initSYSCTL(void){
 
-    //Set system clock to 16MHz, Utilize main oscillator
-    SysCtlClockSet(SYSCTL_OSC_MAIN | SYSCTL_USE_OSC | SYSCTL_XTAL_16MHZ);
+    //Set system clock to 80MHz, Utilize main oscillator
+    SysCtlClockSet(SYSCTL_SYSDIV_2_5|SYSCTL_USE_PLL|SYSCTL_OSC_MAIN|SYSCTL_XTAL_16MHZ);
 
     // Enable GPIO peripherals
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
@@ -207,10 +216,11 @@ void initGPIO(void){
     GPIOPinTypeGPIOInput(GPIO_PORTD_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
 
     // Make pins 1 and 2 Falling edge triggered interrupts.
-    GPIOIntTypeSet(GPIO_PORTD_BASE, (GPIO_PIN_1 | GPIO_PIN_2), GPIO_RISING_EDGE);
+    GPIOIntTypeSet(GPIO_PORTD_BASE, (GPIO_PIN_1 | GPIO_PIN_2), GPIO_LOW_LEVEL);
 
     // Make pins
     GPIOPadConfigSet(GPIO_PORTD_BASE, (GPIO_PIN_1 | GPIO_PIN_2), GPIO_STRENGTH_12MA, GPIO_PIN_TYPE_STD_WPU);
+    GPIO_PORTD_AMSEL_R &= ~0x6;      // 3) disable analog on PD1 & PD2
 
     // Enable the pin interrupts.
     GPIOIntRegister(GPIO_PORTD_BASE, bumpSensor_handler);
@@ -228,7 +238,7 @@ void initPWM0(void){
 
     GPIOPinTypePWM(GPIO_PORTB_BASE, ( (GPIO_PIN_6) | (GPIO_PIN_7)));
 
-    SysCtlPWMClockSet(SYSCTL_PWMDIV_16);
+    SysCtlPWMClockSet(SYSCTL_PWMDIV_64);
     // Wait for the PWM0 module to be ready.
     GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1) | (GPIO_PIN_2) | (GPIO_PIN_3)  | (GPIO_PIN_4) | (GPIO_PIN_5) ) );
     // Enable the PWM0 peripheral
@@ -319,7 +329,7 @@ void initQEI(void){
     QEIPositionSet(QEI0_BASE, 0);
     QEIPositionSet(QEI1_BASE, 0);
 
-    uint32_t Clk_period = SysCtlClockGet();
+    Clk_period = SysCtlClockGet();
 
     // Using SYSTEM Clock to get a 1 second period for velocity
     QEIVelocityConfigure(QEI0_BASE, QEI_VELDIV_2, Clk_period);
@@ -557,6 +567,24 @@ void left_standby(void){
     // Setting the proper pins to stop the motors  [ IN1 = 0 ; IN2 = 0 ; SB = 0 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5) ), ( ~(GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5)));
 
+}
+void initSysTick(void)
+{
+  NVIC_ST_CTRL_R = 0;                   // disable SysTick during setup
+  NVIC_ST_RELOAD_R = NVIC_ST_RELOAD_M;  // maximum reload value
+  NVIC_ST_CURRENT_R = 0;
+  NVIC_ST_CTRL_R = NVIC_ST_CTRL_ENABLE+NVIC_ST_CTRL_CLK_SRC;
+}
+
+// The delay parameter is in units of the core clock. ( 1/120000000 sec )
+void SysTick_Wait(uint32_t delay)
+{
+  volatile uint32_t elapsedTime;
+  uint32_t startTime = NVIC_ST_CURRENT_R;
+  do{
+    elapsedTime = (startTime-NVIC_ST_CURRENT_R)&0x00FFFFFF;
+  }
+  while(elapsedTime <= delay);
 }
 
 //////////////////////      Recycle Bin      ///////////////////////
