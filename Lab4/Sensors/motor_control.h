@@ -14,8 +14,11 @@ void initGPIO(void);
 void initPWM0(void);
 void initQEI(void);
 void initUART0(void);
+void initSysTick(void);
+void SysTick_Wait(uint32_t delay);
 
 // Motor Control Prototypes
+void bumper_function(void);
 void QEI0_handler(void);
 void QEI1_handler(void);
 void bumpSensor_handler(void);
