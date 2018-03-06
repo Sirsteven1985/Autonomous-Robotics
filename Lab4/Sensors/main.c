@@ -34,20 +34,21 @@
 #include "inc/hw_types.h"
 #include "motor_control.h"
 
-/// Global Variables
+// Global Variables
 volatile    uint32_t cnt = 0;
 //volatile    uint32_t stat = 0;
 volatile    uint32_t speed_Wh1, speed_Wh2;
 volatile    int32_t direction_Wh1, direction_Wh2;
 volatile    uint32_t POS_Wh1, POS_Wh2;
 volatile    uint32_t IND_Wh1, IND_Wh2;
-volatile    uint32_t L_SPD = 300;
-volatile    uint32_t R_SPD = 300;
-
+volatile    uint32_t L_SPD = 7500;
+volatile    uint32_t R_SPD = 7500;
 
 // Constant
 const       float L = 4.65;
-const       float r = 2;
+const       float L_rad = 2.93;
+const       float R_rad = 2.9;
+
 
 // Bump Switches
 volatile    uint32_t r_bumpSensors = 0x4;
@@ -79,23 +80,23 @@ int main(void)
 
     speed_Wh1 = QEIVelocityGet(QEI0_BASE);
     speed_Wh2 = QEIVelocityGet(QEI1_BASE);
+    ////////////////////////////////////////////////////////////////////////////////
+
     while(1)
     {
-
         speed_Wh1 = QEIVelocityGet(QEI0_BASE);
         speed_Wh2 = QEIVelocityGet(QEI1_BASE);
         //PD_control();
-        //CW_rotate_90();
+        //CW_90();
 
         //FWD_1_foot();
 
-        robot_FWD();
+        all_FWD();
         //all_wheel_REV();
 
+
     }
-
 }
-
 /**************************************HANDLERS**************************************/
 void QEI0_handler(void){ // Left Wheel
 
@@ -130,39 +131,36 @@ void bumper_function(void){
         //blink leds when bumpers make contact PD2 right switch
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | ~GPIO_PIN_2));
         //reverse
-        all_wheel_REV();
-        for(i = 0; i < 2000000; i++)
-        {}
+        all_REV();
+        SysTick_Wait(16000000);
+        SysTick_Wait(16000000);
         //ccw rotate
-        CCW_rotate_90();
+        CCW_90();
     }
     if(l_bumpSensors == 0){
         //blink leds when bumpers make contact PD1 left switch
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (~GPIO_PIN_1 | GPIO_PIN_2));
         //reverse
-        all_wheel_REV();
-        for(i = 0; i < 2000000; i++)
-        {}
+        all_REV();
+        SysTick_Wait(16000000);
+        SysTick_Wait(16000000);
         //cw rotate
-        CW_rotate_90();
+        CW_90();
     }else if((r_bumpSensors == 0) && (l_bumpSensors == 0)){
         //blink leds when bumpers make contact
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | GPIO_PIN_2));
         // Reverse
-        all_wheel_REV();
-        for(i = 0; i < 2000000; i++)
-        {}
+        all_REV();
+        SysTick_Wait(16000000);
+        SysTick_Wait(16000000);
         //cw rotate
-        CW_rotate_90();
-        CW_rotate_90();
-    }
-    else{
+        CW_90();
+        CW_90();
+    }else{
 
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), ~(GPIO_PIN_1 | GPIO_PIN_2));
     }
     GPIOIntEnable(GPIO_PORTD_BASE, (GPIO_PIN_2 | GPIO_PIN_3));
-    l_bumpSensors = 0x2;
-    r_bumpSensors = 0x4;
     GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), ~(GPIO_PIN_1 | GPIO_PIN_2));
 
 }
@@ -237,30 +235,22 @@ void initPWM0(void){
     // to the parameters.
     //PB_6_m0
     PWMGenConfigure(PWM0_BASE, PWM_GEN_0, PWM_GEN_MODE_UP_DOWN | PWM_GEN_MODE_NO_SYNC);
-    PWMGenConfigure(PWM0_BASE, PWM_GEN_1, PWM_GEN_MODE_UP_DOWN | PWM_GEN_MODE_NO_SYNC);
-    //
     // Set the period. For a 50 KHz frequency, the period = 1/50,000, or 20
     // microseconds. For a 20 MHz clock, this translates to 400 clock ticks.
 
     // Set the load value of PWM0 generator
-    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_0, 400);
-    //
+    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_0, 10000);
     // Set the pulse width of PWM0
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, R_SPD);   // Right Wheel Speed Control
-    //
     // Set the load value of PWM1 generator
-    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, 400);
-    //
+    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, 10000);
     // Set the pulse width of PWM1
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, L_SPD);   // Left Wheel Speed Control
-    //
     // Enable Gen 1 and Gen 0
     PWMGenEnable(PWM0_BASE, PWM_GEN_0);
-    //PWMGenEnable(PWM_BASE_0, PWM_GEN_0 | PWM_GEN_1);
-    //
+
     // Enable the outputs
     PWMOutputState(PWM0_BASE, (PWM_OUT_0_BIT | PWM_OUT_1_BIT), true);
-
 }
 
 // QEI initialization
@@ -341,9 +331,7 @@ void initUART0(void){
 void PD_control(void)
 {
     // this function corrects the errors in this wheel speed and position
-    QEIPositionSet(QEI0_BASE, 0);
-    QEIPositionSet(QEI1_BASE, 0);
-    SysTick_Wait(32000000); //0.4 second delay 80MHz
+
     POS_Wh1 = QEIPositionGet(QEI0_BASE);
     POS_Wh2 = QEIPositionGet(QEI1_BASE);
     int32_t error;
@@ -356,78 +344,95 @@ void PD_control(void)
     }
 
 }
-void CW_rotate_90(void)
-{
+void CW_90(void){
+    cnt = 0;
+    right_brake();
+    left_brake();
+    SysTick_Wait(16000000); // wait to prevent carrying momentum from previous movement
     // slow down for turning
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, 190);   // Right Wheel Speed Control
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, 6500);   // Right Wheel Speed Control
     // Set the pulse width of PWM1
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, 190);   // Left Wheel Speed Control
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, 6500);   // Left Wheel Speed Control
     QEIPositionSet(QEI0_BASE, 0);
     QEIPositionSet(QEI1_BASE, 0);
     POS_Wh1 = QEIPositionGet(QEI0_BASE);
     POS_Wh2 = QEIPositionGet(QEI1_BASE);
-    left_wheel_FWD();
-    right_wheel_REV();
+    left_FWD();
+    right_REV();
 
-    while((POS_Wh1 != 50) && (POS_Wh2 != 50)){
+    //while((POS_Wh1 != 51) && (POS_Wh2 != 51))
+    while(1){
 
         POS_Wh1 = QEIPositionGet(QEI0_BASE);
         POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
-        if(POS_Wh1 == 50){
+        if(POS_Wh1 == 52){
            left_brake();
            PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, L_SPD);   // Resume left speed
+           QEIPositionSet(QEI0_BASE, 0);
+           cnt = cnt + 1;
         }
-        if(POS_Wh2 == 50){
+        if(POS_Wh2 == (127-52)){
            right_brake();
            PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, R_SPD);   // Resume right speed
+           QEIPositionSet(QEI1_BASE, 0);
+           cnt = cnt + 1;
         }
-
+        if(cnt == 2){
+            break;
+        }
     }
-
+    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
 }
-void CCW_rotate_90(void){
-
+void CCW_90(void){
+    cnt = 0;
+    right_brake();
+    left_brake();
+    SysTick_Wait(16000000); // wait to prevent carrying momentum from previous movement
     // slow down for turning
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, 190);   // Right Wheel Speed Control
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, 6500);   // Right Wheel Speed Control
     // Set the pulse width of PWM1
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, 190);   // Left Wheel Speed Control
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, 6500);   // Left Wheel Speed Control
     QEIPositionSet(QEI0_BASE, 0);
     QEIPositionSet(QEI1_BASE, 0);
 
-    left_wheel_REV();
-    right_wheel_FWD();
+    left_REV();
+    right_FWD();
 
     POS_Wh1 = QEIPositionGet(QEI0_BASE);
     POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
-    while((POS_Wh1 != (127-50)) && (POS_Wh2 != (127-50))){
+    while(1){
 
         POS_Wh1 = QEIPositionGet(QEI0_BASE);
         POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
-        if(POS_Wh1 == (127-50)){
-           left_brake();
-           PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, L_SPD);   // Resume left speed
+        if(POS_Wh1 == (127-52)){
+            left_brake();
+            PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, L_SPD);   // Resume left speed
+            QEIPositionSet(QEI0_BASE, 0);
+            cnt = cnt + 1;
         }
-
-        if(POS_Wh2 == (127-50)){
-           right_brake();
-           PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, R_SPD);   // Resume right speed
+        if(POS_Wh2 == 52){
+            right_brake();
+            PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, R_SPD);   // Resume right speed
+            QEIPositionSet(QEI1_BASE, 0);
+            cnt = cnt + 1;
         }
-
+        if(cnt == 2){
+            break;
+        }
     }
-
+    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
 }
-
 void FWD_1_foot(void){
 
     cnt = 0;
     QEIPositionSet(QEI0_BASE, 0);
     QEIPositionSet(QEI1_BASE, 0);
 
-    left_wheel_FWD();
-    right_wheel_FWD();
+    all_FWD();
 
     IND_Wh1 = 0;
     IND_Wh2 = 0;
@@ -443,33 +448,32 @@ void FWD_1_foot(void){
         if(POS_Wh1 == 127){
             IND_Wh1 = 1;
         }
-
-        if(POS_Wh2 == 1){
+        if(POS_Wh2 == 127){
             IND_Wh2 = 1;
         }
-
         if((POS_Wh1 == 90) && (IND_Wh1 == 1)){
             left_brake();
             QEIPositionSet(QEI0_BASE, 0);
             cnt = cnt + 1;
         }
-
-        if((POS_Wh2 == (127-90)) && (IND_Wh2 == 1)){
+        if((POS_Wh2 == 90) && (IND_Wh2 == 1)){
             right_brake();
             QEIPositionSet(QEI1_BASE, 0);
             cnt = cnt + 1;
         }
     }
+    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
 }
 
 //////////////////////      Drive straight forward      ///////////////////////
-void robot_FWD(void){
+void all_FWD(void){
 
-    right_wheel_FWD();
-    left_wheel_FWD();
+    right_FWD();
+    left_FWD();
 
 }
-void right_wheel_FWD(void){
+void right_FWD(void){
 
     /*      REFERENCE TABLE     */
     //  IN1 --> PIN_1
@@ -481,8 +485,7 @@ void right_wheel_FWD(void){
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_1, ~(GPIO_PIN_1));
 
 }
-
-void right_wheel_REV(void){
+void right_REV(void){
 
     // Setting the proper pins to drive the motor in reverse [ IN1 = 1 ; IN2 = 0 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1) ), ( (GPIO_PIN_0) | (GPIO_PIN_1) ));
@@ -498,8 +501,7 @@ void right_standby(void){
     // Setting the proper pins to stop the motors  [ IN1 = 0 ; IN2 = 0 ; SB = 0 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1)| (GPIO_PIN_2) ), ( ~(GPIO_PIN_0) | (GPIO_PIN_1)| (GPIO_PIN_2)));
 }
-
-void left_wheel_FWD(void){
+void left_FWD(void){
 
     /*      REFERENCE TABLE     */
     //  IN1 --> PIN_5
@@ -510,13 +512,13 @@ void left_wheel_FWD(void){
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4) ), ( (GPIO_PIN_3) | (GPIO_PIN_4) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_5, ~(GPIO_PIN_5));
 }
-void left_wheel_REV(void){
+void left_REV(void){
 
     // Setting the proper pins to drive the motor forward [ IN1 = 0 ; IN2 = 1 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_5) ), ( (GPIO_PIN_3) | (GPIO_PIN_5) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4, ~(GPIO_PIN_4));
 }
-void all_wheel_REV(void){
+void all_REV(void){
 
     // Setting the proper pins to drive the motor in reverse [ IN1 = 1 ; IN2 = 0 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1) ), ( (GPIO_PIN_0) | (GPIO_PIN_1) ));
@@ -526,14 +528,12 @@ void all_wheel_REV(void){
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4, ~(GPIO_PIN_4));
 
 }
-
 void left_brake(void){
 
     // Setting the proper pins to stop the motors  [ IN1 = 1 ; IN2 = 1 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5) ), ( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5)));
 
 }
-
 void left_standby(void){
 
     // Setting the proper pins to stop the motors  [ IN1 = 0 ; IN2 = 0 ; SB = 0 ]
@@ -585,3 +585,6 @@ void SysTick_Wait(uint32_t delay)
 //
 //      speed_Wh1 = QEIVelocityGet(QEI0_BASE); //   measure speed
 
+//IND_Wh1 = GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_1);
+//GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, (GPIO_PIN_1 ^ IND_Wh1));
+//SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
