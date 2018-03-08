@@ -7,16 +7,17 @@
 
 * Lab 6:
 
-* Worksheet 3
-	-dminT_theta.myFirstControlPorgram
-	-ECPE 155 Worksheet 3.docx
-	-Hugs.m
-	-str8_shot.m
-	-TangentBug.m
-	
 * Lab 5:
+
+	-main
+	
+	-motor_control
 		
 * Lab 4:
+
+	-main
+	
+	-motor_control
 
 * Worksheet3:
 
@@ -24,11 +25,17 @@
 	
 	-pv_ws3.m
 	
+	-dminT_theta.myFirstControlPorgram
+	-ECPE 155 Worksheet 3.docx
+	-Hugs.m
+	-str8_shot.m
+	-TangentBug.m
+	
 * Lab 3:
 
-	-lab3_QEI
+	-main
 
-	-Lab3 Direct Register Writes
+	-motor_control
 
 	-Motor Control\sg_prelab\ECPE155_prelab3_SG
 
