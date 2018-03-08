@@ -4,15 +4,14 @@
  * main.c
  * ECPE 155 Autonomous Robotics
  * Spring 2018
- * Lab 4 - Bump Sensor
+ * Lab 5 - Obstacle Avoidance with the use of IR and bump sensors
  * Lab Associates:  Paul Vuong
- *                  Steve Guerrero
- * 1.   Install rocker switches on robot for use as a bump sensor.
- * 2.   Design and implement basic obstacle avoidance.
- * 3.   After attaching the bump sensors, create source code to have LEDs blink in a particular pattern
- *      for each engagement of the sensors with the use of ISRs.
- * 4.   Once the sensors are functional with the results of the LEDs, create source code to have the
- *      robot adjust its direction once it impacts a surface with the bumper.
+ *                  Steve Guerro
+ * 1.   In addition to the bump switches, install the IR sensors (3).
+ * 2.   Re-design obstacle avoidance from lab4.
+ * 3.   Attach the IR sensors and connect to the TM4C.
+ * 4.   The IR sensors output an analog signal, the use of the ADC will be needed to convert analog samples.
+ * 5.   Design and implement a low level obstacle avoidance warning system based on the IR and bump sensor readings.
  */
 
 // Libraries Used
@@ -22,13 +21,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "inc/tm4c123gh6pm.h"
-#include "driverlib\sysctl.h"
-#include "driverlib\gpio.h"
-#include "driverlib\pwm.h"
-#include "driverlib\pin_map.h"
-#include "driverlib\interrupt.h"
-#include "driverlib\uart.h"
-#include "driverlib\qei.h"
+#include "C:\ti\TivaWare_C_Series-2.1.3.156\driverlib\sysctl.h"
+#include "C:\ti\TivaWare_C_Series-2.1.3.156\driverlib\gpio.h"
+#include "C:\ti\TivaWare_C_Series-2.1.3.156\driverlib\pwm.h"
+#include "C:\ti\TivaWare_C_Series-2.1.3.156\driverlib\pin_map.h"
+#include "C:\ti\TivaWare_C_Series-2.1.3.156\driverlib\interrupt.h"
+#include "C:\ti\TivaWare_C_Series-2.1.3.156\driverlib\uart.h"
+#include "C:\ti\TivaWare_C_Series-2.1.3.156\driverlib\qei.h"
+#include "C:\ti\TivaWare_C_Series-2.1.3.156\driverlib\adc.h"
 #include "inc/hw_gpio.h"
 #include "inc/hw_memmap.h"
 #include "inc/hw_types.h"
@@ -41,6 +41,8 @@ volatile    uint32_t speed_Wh1, speed_Wh2;
 volatile    int32_t direction_Wh1, direction_Wh2;
 volatile    uint32_t POS_Wh1, POS_Wh2;
 volatile    uint32_t IND_Wh1, IND_Wh2;
+volatile    uint32_t ADC_F, ADC_R, ADC_L;
+            uint32_t ADC_Data[3];
 volatile    uint32_t L_SPD = 7500;
 volatile    uint32_t R_SPD = 7500;
 
@@ -57,14 +59,17 @@ volatile    uint32_t l_bumpSensors = 0x2;
 uint32_t ii = 0;
 uint32_t i = 0;
 
-int main(void)
-{
+
+int main(void){
+
     initSYSCTL();
     initPWM0();
     initQEI();
     initUART0();
+    initADC();
     initGPIO();
     initSysTick();
+
 
     //To send multiple characters, such as numbers, we need to send multiple characters.  We can do this using a string and a for loop:
     //UART EXAMPLE CODE FOR POSITION
@@ -78,25 +83,24 @@ int main(void)
     IND_Wh1 = 0;
     IND_Wh2 = 0;
 
+
     speed_Wh1 = QEIVelocityGet(QEI0_BASE);
     speed_Wh2 = QEIVelocityGet(QEI1_BASE);
     ////////////////////////////////////////////////////////////////////////////////
+    all_FWD();
 
-    while(1)
-    {
+    while(1){
+
         speed_Wh1 = QEIVelocityGet(QEI0_BASE);
         speed_Wh2 = QEIVelocityGet(QEI1_BASE);
-        //PD_control();
-        //CW_90();
 
-        //FWD_1_foot();
-
-        all_FWD();
-        //all_wheel_REV();
+        IR_funtions();
 
 
     }
+
 }
+
 /**************************************HANDLERS**************************************/
 void QEI0_handler(void){ // Left Wheel
 
@@ -105,6 +109,7 @@ void QEI0_handler(void){ // Left Wheel
     //POS_Wh1 = QEIPositionGet(QEI0_BASE);
     //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
     IND_Wh1 = IND_Wh1 + 1;
+
 }
 
 void QEI1_handler(void){ // Left Wheel
@@ -114,15 +119,92 @@ void QEI1_handler(void){ // Left Wheel
     //POS_Wh1 = QEIPositionGet(QEI0_BASE);
     //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
     IND_Wh2 = IND_Wh2 + 1;
+
+}
+
+void ADC_function(void){
+
+        ADCProcessorTrigger(ADC0_BASE, 1);
+
+        // Wait for conversion to be completed.
+        while(!ADCIntStatus(ADC0_BASE, 1, false)){}
+        //
+        // Clear the ADC interrupt flag.
+        ADCIntClear(ADC0_BASE, 1);
+        //
+        // Read ADC Value.
+        ADCSequenceDataGet(ADC0_BASE, 1, ADC_Data);
+
+        ADC_F = ADC_Data[0];
+        ADC_R = ADC_Data[1];
+        ADC_L = ADC_Data[2];
+
+}
+
+void IR_funtions(void){
+
+    ADC_function();
+
+    ////////////////////////////   LAB5    /////////////////////
+    //Robot will operate in IR mode when distances detected on all three sensors are below an ADC reading of 650
+    //Robot will operate in bumper mode when distances are at a maximum value. I.E. an object is too close to the
+    //robot for accurate measurements. In which case rely on the bump sensors instead.
+
+    //Conditional statements for ADC_F = 1000, ADC_R = 2100, and ADC_L = 1950 indicate robot is able to move freely
+    //and there are no obstacles w/in a 15cm radius in front of it.
+    if((ADC_F<=1000) && (ADC_R<=2100) && (ADC_L<=1950)){
+
+        //Keep driving forward until an object is detected
+        all_FWD();
+
+    }else if((ADC_F>1000) && (ADC_R<=2100) && (ADC_L<=1950)){
+
+        //Front sensor detects an obstacle, stop bust a U and drive in opposite direction
+        CW_90();
+        CW_90();
+        all_FWD();
+
+    }else if((ADC_F>1000) && (ADC_R>2100) && (ADC_L<=1950)){
+
+        //Front and Right IR sensor detect obstacle, rotate CCW
+        CCW_90();
+        all_FWD();
+
+    }else if((ADC_F>1000) && (ADC_R<=2100) && (ADC_L>1950)){
+
+        //Front and Left IR sensor detect obstacle, rotate CW
+        CW_90();
+        all_FWD();
+
+    }else if((ADC_F<=1000) && (ADC_R>3000) && (ADC_L<=1950)){
+
+        //Robot is driving too close to an obstacle on the Right, rotate CCW
+        CCW_90();
+        all_FWD();
+
+    }else if((ADC_F<=1000) && (ADC_R<=2100) && (ADC_L>3000)){
+
+        //Robot is driving too close to an obstacle on the Left, rotate CW
+        CW_90();
+        all_FWD();
+
+    }else{
+
+        //Keep driving forward
+        all_FWD();
+
+    }
+
 }
 
 void bumpSensor_handler(void){
+
     GPIOIntClear(GPIO_PORTD_BASE,(GPIO_PIN_2 | GPIO_PIN_3));
     l_bumpSensors = GPIOPinRead(GPIO_PORTD_BASE, GPIO_PIN_2);
     r_bumpSensors = GPIOPinRead(GPIO_PORTD_BASE, GPIO_PIN_3);
     GPIOIntDisable(GPIO_PORTD_BASE, (GPIO_PIN_2 | GPIO_PIN_3));
     bumper_function();
-    //SysTick_Wait(100);
+
 }
 
 void bumper_function(void){
@@ -132,7 +214,7 @@ void bumper_function(void){
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | ~GPIO_PIN_2));
         //reverse
         all_REV();
-        SysTick_Wait(16000000);
+        SysTick_Wait(16000000);     // wait 0.4 seconds to prevent carrying momentum
         SysTick_Wait(16000000);
         //ccw rotate
         CCW_90();
@@ -142,55 +224,69 @@ void bumper_function(void){
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (~GPIO_PIN_1 | GPIO_PIN_2));
         //reverse
         all_REV();
-        SysTick_Wait(16000000);
+        SysTick_Wait(16000000);     // wait 0.4 seconds to prevent carrying momentum
         SysTick_Wait(16000000);
         //cw rotate
         CW_90();
-    }else if((r_bumpSensors == 0) && (l_bumpSensors == 0)){
+    }
+    else if((r_bumpSensors == 0) && (l_bumpSensors == 0)){
         //blink leds when bumpers make contact
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | GPIO_PIN_2));
         // Reverse
         all_REV();
-        SysTick_Wait(16000000);
+        SysTick_Wait(16000000);     // wait 0.4 seconds to prevent carrying momentum
         SysTick_Wait(16000000);
         //cw rotate
         CW_90();
         CW_90();
-    }else{
-
+    }
+    else{
+        // Turn the bumper interrupts back on
+        GPIOIntEnable(GPIO_PORTD_BASE, (GPIO_PIN_2 | GPIO_PIN_3));
+        // Turn all lights off
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), ~(GPIO_PIN_1 | GPIO_PIN_2));
     }
+        // Turn the bumper interrupts back on
     GPIOIntEnable(GPIO_PORTD_BASE, (GPIO_PIN_2 | GPIO_PIN_3));
+    // Turn all lights off
     GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), ~(GPIO_PIN_1 | GPIO_PIN_2));
 
 }
+
 // SYSCTL initialization
 void initSYSCTL(void){
 
-    //SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN | SYSCTL_XTAL_25MHZ);
     //Set system clock to 80MHz, Utilize main oscillator
     SysCtlClockSet(SYSCTL_SYSDIV_2_5|SYSCTL_USE_PLL|SYSCTL_OSC_MAIN|SYSCTL_XTAL_16MHZ);
 
     // Enable GPIO peripherals
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);    // UART0
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);    // Driver control PWM0 (B6 & B7)
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);    // QEI
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);    // Bumpers & QEI
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);    // ADC (E1 & E2 & E3)
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);    // LED Lights (F1 & F2)
 
     // Enable PWM peripherals
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM0);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM0);     // PWM Module 0
 
     // Enable UART Peripherals
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);    // UART0 Module
 
     // Enable QEI Peripherals
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI0);
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI1);
-    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_QEI1))
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI0);     // QEI0 Module
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI1);     // QEI1 Module
+
+    //
+    // The ADC0 peripheral must be enabled for use.
+    //
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);     // ADC0 Module
+
+    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_ADC0))
      { }
 
 }
+
 // GPIO initialization
 void initGPIO(void){
 
@@ -219,6 +315,7 @@ void initGPIO(void){
     IntMasterEnable();
 
 }
+
 // PWM0 initialization
 void initPWM0(void){
 
@@ -318,6 +415,46 @@ void initQEI(void){
     QEIIntEnable(QEI1_BASE, QEI_INTINDEX);
 }
 
+// Initialize ADC
+void initADC(void){
+
+    // Change the pin types to use the ADC peripheral
+    GPIOPinTypeADC(GPIO_PORTE_BASE, ( GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3));
+
+    // Enable sample sequence 3 with a processor signal trigger.  Sequence 3
+    // will do a single sample when the processor sends a signal to start the
+    // conversion.  Each ADC module has 4 programmable sequences, sequence 0
+    // to sequence 3.  This example is arbitrarily using sequence 3.
+    //
+    ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_PROCESSOR, 0);
+
+    // Configure step 0 on sequence 3.  Sample channel 0 (ADC_CTL_CH0) in
+    // single-ended mode (default) and configure the interrupt flag
+    // (ADC_CTL_IE) to be set when the sample is done.  Tell the ADC logic
+    // that this is the last conversion on sequence 3 (ADC_CTL_END).  Sequence
+    // 3 has only one programmable step.  Sequence 1 and 2 have 4 steps, and
+    // sequence 0 has 8 programmable steps.  Since we are only doing a single
+    // conversion using sequence 3 we will only configure step 0.  For more
+    // information on the ADC sequences and steps, reference the datasheet.
+    //
+    ADCSequenceStepConfigure(ADC0_BASE, 1, 0, ADC_CTL_CH0);
+    ADCSequenceStepConfigure(ADC0_BASE, 1, 1, ADC_CTL_CH1);
+    ADCSequenceStepConfigure(ADC0_BASE, 1, 2, ADC_CTL_CH2| ADC_CTL_IE | ADC_CTL_END);   // enable interrupt after ch2 read
+
+    ADCHardwareOversampleConfigure(ADC0_BASE, 4);
+    //
+    // Since sample sequence 3 is now configured, it must be enabled.
+    //
+    ADCSequenceEnable(ADC0_BASE, 1);
+
+    // Clear the interrupt status flag.  This is done to make sure the
+    // interrupt flag is cleared before we sample.
+    //
+    ADCIntClear(ADC0_BASE, 1);
+    //
+    // Sample AIN0 forever.  Display the value on the console.
+}
+
 // UART0 initialization
 void initUART0(void){
 
@@ -327,9 +464,11 @@ void initUART0(void){
     UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 9600, UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE);
 
 }
+
 /**************************************PROCEDURES**************************************/
-void PD_control(void)
-{
+
+void PD_control(void){
+
     // this function corrects the errors in this wheel speed and position
 
     POS_Wh1 = QEIPositionGet(QEI0_BASE);
@@ -342,9 +481,10 @@ void PD_control(void)
     if(POS_Wh1 > POS_Wh2){
         error = 0;
     }
-
 }
+
 void CW_90(void){
+
     cnt = 0;
     right_brake();
     left_brake();
@@ -382,10 +522,14 @@ void CW_90(void){
             break;
         }
     }
+
     SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
     SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+
 }
+
 void CCW_90(void){
+
     cnt = 0;
     right_brake();
     left_brake();
@@ -424,8 +568,11 @@ void CCW_90(void){
             break;
         }
     }
+
     SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+
 }
+
 void FWD_1_foot(void){
 
     cnt = 0;
@@ -473,6 +620,7 @@ void all_FWD(void){
     left_FWD();
 
 }
+
 void right_FWD(void){
 
     /*      REFERENCE TABLE     */
@@ -485,22 +633,26 @@ void right_FWD(void){
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_1, ~(GPIO_PIN_1));
 
 }
+
 void right_REV(void){
 
     // Setting the proper pins to drive the motor in reverse [ IN1 = 1 ; IN2 = 0 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1) ), ( (GPIO_PIN_0) | (GPIO_PIN_1) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_2, ~(GPIO_PIN_2));
 }
+
 void right_brake(void){
 
     // Setting the proper pins to stop the motors  [ IN1 = 1 ; IN2 = 1 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1)| (GPIO_PIN_2) ), ( (GPIO_PIN_0) | (GPIO_PIN_1)| (GPIO_PIN_2)));
 }
+
 void right_standby(void){
 
     // Setting the proper pins to stop the motors  [ IN1 = 0 ; IN2 = 0 ; SB = 0 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1)| (GPIO_PIN_2) ), ( ~(GPIO_PIN_0) | (GPIO_PIN_1)| (GPIO_PIN_2)));
 }
+
 void left_FWD(void){
 
     /*      REFERENCE TABLE     */
@@ -512,12 +664,14 @@ void left_FWD(void){
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4) ), ( (GPIO_PIN_3) | (GPIO_PIN_4) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_5, ~(GPIO_PIN_5));
 }
+
 void left_REV(void){
 
     // Setting the proper pins to drive the motor forward [ IN1 = 0 ; IN2 = 1 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_5) ), ( (GPIO_PIN_3) | (GPIO_PIN_5) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4, ~(GPIO_PIN_4));
 }
+
 void all_REV(void){
 
     // Setting the proper pins to drive the motor in reverse [ IN1 = 1 ; IN2 = 0 ; SB = 1 ]
@@ -528,35 +682,41 @@ void all_REV(void){
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4, ~(GPIO_PIN_4));
 
 }
+
 void left_brake(void){
 
     // Setting the proper pins to stop the motors  [ IN1 = 1 ; IN2 = 1 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5) ), ( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5)));
 
 }
+
 void left_standby(void){
 
     // Setting the proper pins to stop the motors  [ IN1 = 0 ; IN2 = 0 ; SB = 0 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5) ), ( ~(GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5)));
 
 }
-void initSysTick(void)
-{
+
+void initSysTick(void){
+
   NVIC_ST_CTRL_R = 0;                   // disable SysTick during setup
   NVIC_ST_RELOAD_R = NVIC_ST_RELOAD_M;  // maximum reload value
   NVIC_ST_CURRENT_R = 0;
   NVIC_ST_CTRL_R = NVIC_ST_CTRL_ENABLE+NVIC_ST_CTRL_CLK_SRC;
+
 }
 
 // The delay parameter is in units of the core clock. ( 1/120000000 sec )
-void SysTick_Wait(uint32_t delay)
-{
+void SysTick_Wait(uint32_t delay){
+
   volatile uint32_t elapsedTime;
   uint32_t startTime = NVIC_ST_CURRENT_R;
+
   do{
     elapsedTime = (startTime-NVIC_ST_CURRENT_R)&0x00FFFFFF;
   }
   while(elapsedTime <= delay);
+
 }
 
 //////////////////////      Recycle Bin      ///////////////////////
@@ -588,3 +748,4 @@ void SysTick_Wait(uint32_t delay)
 //IND_Wh1 = GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_1);
 //GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, (GPIO_PIN_1 ^ IND_Wh1));
 //SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+
