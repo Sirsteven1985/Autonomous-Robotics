@@ -6,19 +6,32 @@
 * Files to grade for labs/worksheets:
 
 * Lab 6:
+	
+* Lab 5:
 
-* Worksheet 3
+	-prelab5
+	
+		-sv_prelab5 folder
+		
+		-image_sensor locations
+		
+	-main.c
+	
+	-motor_control.h
+		
+* Lab 4:
+
+	-main.c
+	
+	-motor_control.h
+
+* Worksheet3:
+
 	-dminT_theta.myFirstControlPorgram
 	-ECPE 155 Worksheet 3.docx
 	-Hugs.m
 	-str8_shot.m
 	-TangentBug.m
-	
-* Lab 5:
-		
-* Lab 4:
-
-* Worksheet3:
 
 	-pv_ws3
 	
@@ -26,9 +39,9 @@
 	
 * Lab 3:
 
-	-lab3_QEI
-
-	-Lab3 Direct Register Writes
+	-main.c
+	
+	-motor_control.h
 
 	-Motor Control\sg_prelab\ECPE155_prelab3_SG
 
