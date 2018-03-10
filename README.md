@@ -13,6 +13,8 @@
 	
 		-sv_prelab5 folder
 		
+		-sg_prelab5 folder
+		
 		-image_sensor locations
 		
 	-main.c
@@ -38,6 +40,8 @@
 	-pv_ws3.m
 	
 * Lab 3:
+
+	-291_PD_control folder
 
 	-main.c
 	
