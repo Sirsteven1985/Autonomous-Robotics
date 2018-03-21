@@ -24,6 +24,7 @@
 #include "driverlib\sysctl.h"
 #include "driverlib\gpio.h"
 #include "driverlib\pwm.h"
+#include "driverlib\timer.h"
 #include "driverlib\pin_map.h"
 #include "driverlib\interrupt.h"
 #include "driverlib\uart.h"
@@ -36,6 +37,7 @@
 
 // Global Variables
 volatile    uint32_t cnt = 0;
+volatile    uint32_t Clk_period;
 //volatile    uint32_t stat = 0;
 volatile    uint32_t speed_Wh1, speed_Wh2;
 volatile    int32_t direction_Wh1, direction_Wh2;
@@ -43,14 +45,19 @@ volatile    uint32_t POS_Wh1, POS_Wh2;
 volatile    uint32_t IND_Wh1, IND_Wh2;
 volatile    uint32_t ADC_F, ADC_R, ADC_L;
             uint32_t ADC_Data[3];
-volatile    uint32_t L_SPD = 7500;
-volatile    uint32_t R_SPD = 7500;
+volatile    uint32_t prev_error = 0;
+volatile    uint32_t L_SPD = 7000;
+volatile    uint32_t R_SPD = 7000;
 
-// Constant
+// Constants
 const       float L = 4.65;
-const       float L_rad = 2.93;
-const       float R_rad = 2.9;
+const       float L_rad = 2.93; // Left Wheel Radius
+const       float R_rad = 2.9;  // Right Wheel Radius
 
+volatile    uint8_t Kp = 30;    // Kp proportional const
+volatile    uint8_t Kd = 1;     // Kd derivative const
+
+_Bool da_wae = false;
 
 // Bump Switches
 volatile    uint32_t r_bumpSensors = 0x4;
@@ -69,7 +76,7 @@ int main(void){
     initADC();
     initGPIO();
     initSysTick();
-
+    init_timerA();
 
     //To send multiple characters, such as numbers, we need to send multiple characters.  We can do this using a string and a for loop:
     //UART EXAMPLE CODE FOR POSITION
@@ -91,12 +98,10 @@ int main(void){
 
     while(1){
 
-        speed_Wh1 = QEIVelocityGet(QEI0_BASE);
-        speed_Wh2 = QEIVelocityGet(QEI1_BASE);
 
         IR_funtions();
 
-
+        all_FWD();
     }
 
 }
@@ -270,20 +275,21 @@ void initSYSCTL(void){
     // Enable PWM peripherals
     SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM0);     // PWM Module 0
 
+    // Enable Timer for PD_control Interrupt
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+
     // Enable UART Peripherals
     SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);    // UART0 Module
 
     // Enable QEI Peripherals
     SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI0);     // QEI0 Module
     SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI1);     // QEI1 Module
-
     //
     // The ADC0 peripheral must be enabled for use.
     //
     SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);     // ADC0 Module
 
-    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_ADC0))
-     { }
+    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_ADC0)){}
 
 }
 
@@ -292,34 +298,26 @@ void initGPIO(void){
 
     // LEDS
     GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
-
     // bump switches
     GPIOPinTypeGPIOInput(GPIO_PORTD_BASE,(GPIO_PIN_2 | GPIO_PIN_3));
-
     // Make pins 1 and 2 LOW LEVEL edge triggered interrupts.
     GPIOIntTypeSet(GPIO_PORTD_BASE, (GPIO_PIN_2 | GPIO_PIN_3), GPIO_LOW_LEVEL);
-
     // Make pins
     GPIOPadConfigSet(GPIO_PORTD_BASE, (GPIO_PIN_2 | GPIO_PIN_3), GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
     GPIO_PORTD_AMSEL_R &= ~0x6;      // 3) disable analog on PD1 & PD2
-
     // Clear interrupts
     GPIOIntClear(GPIO_PORTD_BASE,(GPIO_PIN_2 | GPIO_PIN_3));
-
     // Enable the pin interrupts.
     GPIOIntRegister(GPIO_PORTD_BASE, bumpSensor_handler);
-
     // Enable interrupts
     GPIOIntEnable(GPIO_PORTD_BASE, (GPIO_PIN_2 | GPIO_PIN_3));
     // Allows for interrupts to occur
     IntMasterEnable();
-
 }
-
 // PWM0 initialization
 void initPWM0(void){
 
-    SysCtlPWMClockSet(SYSCTL_PWMDIV_64);
+    SysCtlPWMClockSet(SYSCTL_PWMDIV_16);
     // Wait for the PWM0 module to be ready.
     GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1) | (GPIO_PIN_2) | (GPIO_PIN_3)  | (GPIO_PIN_4) | (GPIO_PIN_5) ) );
     // Enable the PWM0 peripheral
@@ -396,7 +394,7 @@ void initQEI(void){
     QEIPositionSet(QEI0_BASE, 0);
     QEIPositionSet(QEI1_BASE, 0);
 
-    uint32_t Clk_period = SysCtlClockGet();
+    Clk_period = SysCtlClockGet();
 
     // Using SYSTEM Clock to get a 1 second period for velocity
     QEIVelocityConfigure(QEI0_BASE, QEI_VELDIV_2, Clk_period);
@@ -414,7 +412,6 @@ void initQEI(void){
     QEIIntRegister(QEI1_BASE, QEI1_handler);
     QEIIntEnable(QEI1_BASE, QEI_INTINDEX);
 }
-
 // Initialize ADC
 void initADC(void){
 
@@ -466,25 +463,58 @@ void initUART0(void){
 }
 
 /**************************************PROCEDURES**************************************/
+void PD_control(void)
+{
+    // this function corrects the errors in the wheel speed every 0.5 seconds
+    // this will allow robot to travel a straighter path with less error in position
 
-void PD_control(void){
+    TimerDisable(TIMER0_BASE, TIMER_A);
+    TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 
-    // this function corrects the errors in this wheel speed and position
+    speed_Wh1 = QEIVelocityGet(QEI0_BASE);  // RPM of Left wheel
+    speed_Wh2 = QEIVelocityGet(QEI1_BASE);  // RPM of Right wheel
 
-    POS_Wh1 = QEIPositionGet(QEI0_BASE);
-    POS_Wh2 = QEIPositionGet(QEI1_BASE);
+    int32_t P;      // Proportional error
+    int32_t D;      // Derivative error
+
     int32_t error;
-    error = (POS_Wh1 - POS_Wh2);
-    if(error < 0){
-        error = -error;
+    error = (speed_Wh1 - speed_Wh2);
+    if((da_wae == true) && (error != 0))
+    {
+        if(error < 0){  //Wheel 2 (Right) speed greater than Wheel 1 (left)
+            error = -(error);
+            P = Kp*(error);
+            D = Kd * (error - prev_error);
+            R_SPD = R_SPD - (P + D);        // decrease right speed
+            L_SPD = L_SPD + (P + D);        // increase left speed
+        }
+        else{       // Left speed greater than Right
+            P = Kp*(error);
+            D = Kd * (error - prev_error);
+            R_SPD = R_SPD + (P + D);        // increase right speed
+            L_SPD = L_SPD - (P + D);        // decrease left speed
+        }
     }
-    if(POS_Wh1 > POS_Wh2){
-        error = 0;
-    }
-}
+    if((R_SPD < 5000)|| (L_SPD < 5000)){
 
+        R_SPD = R_SPD + 1000;   // if below 50% duty cycle increase duty cycle
+        L_SPD = L_SPD + 1000;
+
+    }
+    if(R_SPD > 9300){   // if above 93% duty cycle decrease duty cycle
+        R_SPD = R_SPD - 1000;
+    }
+    if(L_SPD > 9300){
+        L_SPD = L_SPD - 1000;
+    }
+    prev_error = error;
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, L_SPD);   // Set left speed
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, R_SPD);   // Set right speed
+    TimerEnable(TIMER0_BASE, TIMER_A);
+}
 void CW_90(void){
 
+    da_wae = false;
     cnt = 0;
     right_brake();
     left_brake();
@@ -522,14 +552,11 @@ void CW_90(void){
             break;
         }
     }
-
     SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
     SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
-
 }
-
 void CCW_90(void){
-
+    da_wae = false;
     cnt = 0;
     right_brake();
     left_brake();
@@ -568,13 +595,10 @@ void CCW_90(void){
             break;
         }
     }
-
     SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
-
 }
-
 void FWD_1_foot(void){
-
+    da_wae = false;
     cnt = 0;
     QEIPositionSet(QEI0_BASE, 0);
     QEIPositionSet(QEI1_BASE, 0);
@@ -614,13 +638,14 @@ void FWD_1_foot(void){
 }
 
 //////////////////////      Drive straight forward      ///////////////////////
+
 void all_FWD(void){
 
     right_FWD();
     left_FWD();
 
+    da_wae = true;
 }
-
 void right_FWD(void){
 
     /*      REFERENCE TABLE     */
@@ -633,26 +658,22 @@ void right_FWD(void){
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_1, ~(GPIO_PIN_1));
 
 }
-
 void right_REV(void){
-
+    da_wae = false;
     // Setting the proper pins to drive the motor in reverse [ IN1 = 1 ; IN2 = 0 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1) ), ( (GPIO_PIN_0) | (GPIO_PIN_1) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_2, ~(GPIO_PIN_2));
 }
-
 void right_brake(void){
-
+    da_wae = false;
     // Setting the proper pins to stop the motors  [ IN1 = 1 ; IN2 = 1 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1)| (GPIO_PIN_2) ), ( (GPIO_PIN_0) | (GPIO_PIN_1)| (GPIO_PIN_2)));
 }
-
 void right_standby(void){
-
+    da_wae = false;
     // Setting the proper pins to stop the motors  [ IN1 = 0 ; IN2 = 0 ; SB = 0 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1)| (GPIO_PIN_2) ), ( ~(GPIO_PIN_0) | (GPIO_PIN_1)| (GPIO_PIN_2)));
 }
-
 void left_FWD(void){
 
     /*      REFERENCE TABLE     */
@@ -664,16 +685,14 @@ void left_FWD(void){
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4) ), ( (GPIO_PIN_3) | (GPIO_PIN_4) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_5, ~(GPIO_PIN_5));
 }
-
 void left_REV(void){
-
+    da_wae = false;
     // Setting the proper pins to drive the motor forward [ IN1 = 0 ; IN2 = 1 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_5) ), ( (GPIO_PIN_3) | (GPIO_PIN_5) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4, ~(GPIO_PIN_4));
 }
-
 void all_REV(void){
-
+    da_wae = false;
     // Setting the proper pins to drive the motor in reverse [ IN1 = 1 ; IN2 = 0 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_0) | (GPIO_PIN_1) ), ( (GPIO_PIN_0) | (GPIO_PIN_1) ));
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_2, ~(GPIO_PIN_2));
@@ -682,41 +701,48 @@ void all_REV(void){
     GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4, ~(GPIO_PIN_4));
 
 }
-
 void left_brake(void){
-
+    da_wae = false;
     // Setting the proper pins to stop the motors  [ IN1 = 1 ; IN2 = 1 ; SB = 1 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5) ), ( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5)));
 
 }
-
 void left_standby(void){
-
+    da_wae = false;
     // Setting the proper pins to stop the motors  [ IN1 = 0 ; IN2 = 0 ; SB = 0 ]
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5) ), ( ~(GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5)));
 
 }
+void initSysTick(void)
+{
+    NVIC_ST_CTRL_R = 0;                   // disable SysTick during setup
+    NVIC_ST_RELOAD_R = NVIC_ST_RELOAD_M;  // maximum reload value
+    NVIC_ST_CURRENT_R = 0;
+    NVIC_ST_CTRL_R = NVIC_ST_CTRL_ENABLE+NVIC_ST_CTRL_CLK_SRC;
+}
+void init_timerA(void)
+{
+    TimerDisable(TIMER0_BASE, TIMER_A);
+    TimerIntDisable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
+    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);   // 32 bits Timer periodic
+    TimerIntRegister(TIMER0_BASE, TIMER_A, PD_control);    // Registering;
+    IntEnable(INT_TIMER0A);
+    TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 
-void initSysTick(void){
-
-  NVIC_ST_CTRL_R = 0;                   // disable SysTick during setup
-  NVIC_ST_RELOAD_R = NVIC_ST_RELOAD_M;  // maximum reload value
-  NVIC_ST_CURRENT_R = 0;
-  NVIC_ST_CTRL_R = NVIC_ST_CTRL_ENABLE+NVIC_ST_CTRL_CLK_SRC;
+    TimerLoadSet(TIMER0_BASE, TIMER_A, (Clk_period/2) ); // 0.5 second interrupt
+    TimerEnable(TIMER0_BASE, TIMER_A);
 
 }
 
 // The delay parameter is in units of the core clock. ( 1/120000000 sec )
-void SysTick_Wait(uint32_t delay){
-
+void SysTick_Wait(uint32_t delay)
+{
   volatile uint32_t elapsedTime;
   uint32_t startTime = NVIC_ST_CURRENT_R;
-
   do{
     elapsedTime = (startTime-NVIC_ST_CURRENT_R)&0x00FFFFFF;
   }
   while(elapsedTime <= delay);
-
 }
 
 //////////////////////      Recycle Bin      ///////////////////////
@@ -748,4 +774,3 @@ void SysTick_Wait(uint32_t delay){
 //IND_Wh1 = GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_1);
 //GPIOPinWrite(GPIO_PORTF_BASE,GPIO_PIN_1, (GPIO_PIN_1 ^ IND_Wh1));
 //SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
-
