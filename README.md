@@ -6,6 +6,12 @@
 * Files to grade for labs/worksheets:
 
 * Lab 6:
+
+* Worksheet 5:
+
+	-Worksheet5\sv_worksheet5
+	
+	-Worksheet5\sg_worksheet5
 	
 * Lab 5:
 
