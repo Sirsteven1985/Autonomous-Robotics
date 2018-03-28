@@ -1,5 +1,3 @@
-
-
 /**
  * main.c
  * ECPE 155 Autonomous Robotics
@@ -65,14 +63,16 @@ volatile    uint32_t l_bumpSensors = 0x2;
 
 uint32_t ii = 0;
 uint32_t i = 0;
-
+char strToSend[8];
+int32_t data;
+unsigned char returnData;
 
 int main(void){
 
     initSYSCTL();
     initPWM0();
     initQEI();
-    initUART0();
+    initUART5();
     initADC();
     initGPIO();
     initSysTick();
@@ -80,12 +80,9 @@ int main(void){
 
     //To send multiple characters, such as numbers, we need to send multiple characters.  We can do this using a string and a for loop:
     //UART EXAMPLE CODE FOR POSITION
-    //char strToSend[8];
-    //uint32_t i = 0;
-    //POS_Wh1 = QEIPositionGet(QEI0_BASE);
-    //sprintf(strToSend,"%d\r\n",POS_Wh1);
-    //for(i = 0; (strToSend[i] != '\0'); i++)
-    //UARTCharPut(UART0_BASE,strToSend[i]);
+    //char strToSend[8] = "Testing";
+//    uint32_t i = 0;
+
 
     IND_Wh1 = 0;
     IND_Wh2 = 0;
@@ -95,13 +92,27 @@ int main(void){
     speed_Wh2 = QEIVelocityGet(QEI1_BASE);
     ////////////////////////////////////////////////////////////////////////////////
     all_FWD();
-
+    SysTick_Wait(16000000);     // wait 0.4 seconds to prevent carrying momentum
+    SysTick_Wait(16000000);
+    SysTick_Wait(16000000);     // wait 0.4 seconds to prevent carrying momentum
+    SysTick_Wait(16000000);
     while(1){
 
+//        data = UARTCharGet(UART5_BASE);
+//        if(data == 0xDD){
+            //returnData = "TEST";
+//        }
+        IR_functions();
+//        UARTCharPut(UART5_BASE,returnData);
 
-        IR_funtions();
+        turn_angle(-90);
+        FWD_cent(50);
+        turn_angle(90);
 
-        all_FWD();
+//        sprintf(strToSend,"%d\r\n",0x86);
+//        for(i = 0; (strToSend[i] != '\0'); i++)
+//        //UARTCharPut(UART5_BASE,strToSend[i]);
+//        UARTCharPutNonBlocking(UART5_BASE, strToSend[i]);
     }
 
 }
@@ -146,7 +157,7 @@ void ADC_function(void){
 
 }
 
-void IR_funtions(void){
+void IR_functions(void){
 
     ADC_function();
 
@@ -201,7 +212,6 @@ void IR_funtions(void){
     }
 
 }
-
 void bumpSensor_handler(void){
 
     GPIOIntClear(GPIO_PORTD_BASE,(GPIO_PIN_2 | GPIO_PIN_3));
@@ -224,6 +234,7 @@ void bumper_function(void){
         //ccw rotate
         CCW_90();
     }
+
     if(l_bumpSensors == 0){
         //blink leds when bumpers make contact PD1 left switch
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (~GPIO_PIN_1 | GPIO_PIN_2));
@@ -279,7 +290,7 @@ void initSYSCTL(void){
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 
     // Enable UART Peripherals
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);    // UART0 Module
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_UART5);    // UART5 Module
 
     // Enable QEI Peripherals
     SysCtlPeripheralEnable(SYSCTL_PERIPH_QEI0);     // QEI0 Module
@@ -298,6 +309,9 @@ void initGPIO(void){
 
     // LEDS
     GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2));
+    //UART5
+    GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE,(GPIO_PIN_4));
+    GPIOPinTypeGPIOInput(GPIO_PORTE_BASE,(GPIO_PIN_5));
     // bump switches
     GPIOPinTypeGPIOInput(GPIO_PORTD_BASE,(GPIO_PIN_2 | GPIO_PIN_3));
     // Make pins 1 and 2 LOW LEVEL edge triggered interrupts.
@@ -452,14 +466,14 @@ void initADC(void){
     // Sample AIN0 forever.  Display the value on the console.
 }
 
-// UART0 initialization
-void initUART0(void){
+// UART5 initialization
+void initUART5(void){
 
-    GPIOPinConfigure(GPIO_PA0_U0RX);
-    GPIOPinConfigure(GPIO_PA1_U0TX);
-    GPIOPinTypeUART(GPIO_PORTA_BASE, (GPIO_PIN_0 | GPIO_PIN_1));
-    UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 9600, UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE);
-
+    GPIOPinConfigure(GPIO_PE4_U5RX);
+    GPIOPinConfigure(GPIO_PE5_U5TX);
+    GPIOPinTypeUART(GPIO_PORTE_BASE, (GPIO_PIN_4 | GPIO_PIN_5));
+    UARTConfigSetExpClk(UART5_BASE, SysCtlClockGet(), 115200, (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
+    UARTEnable(UART5_BASE);
 }
 
 /**************************************PROCEDURES**************************************/
@@ -596,8 +610,139 @@ void CCW_90(void){
         }
     }
     SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
 }
-void FWD_1_foot(void){
+void turn_angle(int angle){
+/* This function takes in an angle in degrees and converts it to robot movement based on current pose*/
+    // Angle inputs must be greater than 10 degrees and no greater than 180 degrees absolute value
+    // if conditions not met the function returns
+    da_wae = false;
+    int condition_check = angle;
+    int index = 0;
+    if(condition_check < 0)
+        condition_check = - condition_check;
+    if((condition_check > 180) || (condition_check < 10))
+        return;
+
+    cnt = 0;
+    right_brake();
+    left_brake();
+    SysTick_Wait(16000000); // wait to prevent carrying momentum from previous movement
+    // slow down for turning
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, 6500);   // Right Wheel Speed Control
+    // Set the pulse width of PWM1
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, 6500);   // Left Wheel Speed Control
+    QEIPositionSet(QEI0_BASE, 0);
+    QEIPositionSet(QEI1_BASE, 0);
+    POS_Wh1 = QEIPositionGet(QEI0_BASE);
+    POS_Wh2 = QEIPositionGet(QEI1_BASE);
+
+    if(angle < 0){      // Turn CCW
+        // convert the angle into wheel index
+        angle = -angle;
+        index = 0.5*( (angle * 1.333333) - 1 ); // result goes to floor because of integers
+        left_REV();
+        right_FWD();
+        while(1){
+
+            POS_Wh1 = QEIPositionGet(QEI0_BASE);
+            POS_Wh2 = QEIPositionGet(QEI1_BASE);
+
+            if(POS_Wh1 == (127-index)){
+                left_brake();
+                PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, L_SPD);   // Resume left speed
+                QEIPositionSet(QEI0_BASE, 0);
+                cnt = cnt + 1;
+            }
+            if(POS_Wh2 == index){
+                right_brake();
+                PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, R_SPD);   // Resume right speed
+                QEIPositionSet(QEI1_BASE, 0);
+                cnt = cnt + 1;
+            }
+            if(cnt == 2){
+                break;
+            }
+        }
+    }
+    else{       // Turn CW
+        // convert the angle into wheel index
+        index = 0.5*( (angle * 1.333333) + 1 ); // result goes to floor because of integers
+        left_FWD();
+        right_REV();
+
+        while(1){
+
+            POS_Wh1 = QEIPositionGet(QEI0_BASE);
+            POS_Wh2 = QEIPositionGet(QEI1_BASE);
+
+            if(POS_Wh1 == index){
+               left_brake();
+               PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, L_SPD);   // Resume left speed
+               QEIPositionSet(QEI0_BASE, 0);
+               cnt = cnt + 1;
+            }
+            if(POS_Wh2 == (127-index)){
+               right_brake();
+               PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, R_SPD);   // Resume right speed
+               QEIPositionSet(QEI1_BASE, 0);
+               cnt = cnt + 1;
+            }
+            if(cnt == 2){
+                break;
+            }
+        }
+    }
+    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+}
+void FWD_cent(int cm){  // This function moves the robot forward by given amount of centimeters
+    /* this function takes in an integer and converts it to movement in centimeter*/
+    // The input must be greater or equal to 2 cm ( for accuracy of movement )
+    // if conditions not met the function returns
+    da_wae = false;
+    int condition_check = cm;
+    int index = (7 * cm) + 1;
+    if(condition_check < 2)
+        return;
+    int rev = (index/128); // how many revolutions
+    int mod = (index%128); // how many indices after revolution
+    cnt = 0;
+    QEIPositionSet(QEI0_BASE, 0); // Left wheel reset
+    QEIPositionSet(QEI1_BASE, 0); // right wheel reset
+    all_FWD();
+
+    IND_Wh1 = 0;
+    IND_Wh2 = 0;
+
+    while(cnt != 2){
+
+        POS_Wh1 = QEIPositionGet(QEI0_BASE);
+        POS_Wh2 = QEIPositionGet(QEI1_BASE);
+
+        if(POS_Wh1 == 127){ // left wheel completed 1 revolution
+            IND_Wh1 = IND_Wh1 + 1;
+            QEIPositionSet(QEI0_BASE, 0); // Left wheel reset
+        }
+        if(POS_Wh2 == 127){ // right wheel completed 1 revolution
+            IND_Wh2 = IND_Wh2 + 1;
+            QEIPositionSet(QEI1_BASE, 0); // right wheel reset
+        }
+        if((POS_Wh1 == mod) && (IND_Wh1 == rev)){
+            left_brake();
+            QEIPositionSet(QEI0_BASE, 0);
+            cnt = cnt + 1;
+        }
+        if((POS_Wh2 == mod) && (IND_Wh2 == rev)){
+            right_brake();
+            QEIPositionSet(QEI1_BASE, 0);
+            cnt = cnt + 1;
+        }
+    }
+    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+}
+void FWD_1_foot(void){  // This function moves the robot forward 1 foot
     da_wae = false;
     cnt = 0;
     QEIPositionSet(QEI0_BASE, 0);
