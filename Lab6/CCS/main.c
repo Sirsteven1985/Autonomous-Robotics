@@ -36,7 +36,6 @@
 // Global Variables
 volatile    uint32_t cnt = 0;
 volatile    uint32_t Clk_period;
-//volatile    uint32_t stat = 0;
 volatile    uint32_t speed_Wh1, speed_Wh2;
 volatile    int32_t direction_Wh1, direction_Wh2;
 volatile    uint32_t POS_Wh1, POS_Wh2;
@@ -45,7 +44,7 @@ volatile    uint32_t ADC_F, ADC_R, ADC_L;
             uint32_t ADC_Data[3];
 volatile    uint32_t prev_error = 0;
 volatile    uint32_t L_SPD = 7000;
-volatile    uint32_t R_SPD = 7000;
+volatile    uint32_t R_SPD = 7200;
 
 // Constants
 const       float L = 4.65;
@@ -53,9 +52,13 @@ const       float L_rad = 2.93; // Left Wheel Radius
 const       float R_rad = 2.9;  // Right Wheel Radius
 
 volatile    uint8_t Kp = 30;    // Kp proportional const
-volatile    uint8_t Kd = 1;     // Kd derivative const
+volatile    uint8_t Kd = 2;     // Kd derivative const
 
+// Boolean variables
 _Bool da_wae = false;
+_Bool IR_func = true;
+_Bool ADC_flag = false;
+uint16_t dis_wae;
 
 // Bump Switches
 volatile    uint32_t r_bumpSensors = 0x4;
@@ -64,17 +67,19 @@ volatile    uint32_t l_bumpSensors = 0x2;
 uint32_t ii = 0;
 uint32_t i = 0;
 char strToSend[8];
-int32_t data;
-unsigned char returnData;
+
+int32_t choice;
+int mc_data;
+int mc_data_2;
 
 int main(void){
 
     initSYSCTL();
     initPWM0();
     initQEI();
-    initUART5();
     initADC();
     initGPIO();
+    initUART5();
     initSysTick();
     init_timerA();
 
@@ -83,38 +88,12 @@ int main(void){
     //char strToSend[8] = "Testing";
 //    uint32_t i = 0;
 
-
     IND_Wh1 = 0;
     IND_Wh2 = 0;
-
-
-    speed_Wh1 = QEIVelocityGet(QEI0_BASE);
-    speed_Wh2 = QEIVelocityGet(QEI1_BASE);
-    ////////////////////////////////////////////////////////////////////////////////
-    all_FWD();
-    SysTick_Wait(16000000);     // wait 0.4 seconds to prevent carrying momentum
-    SysTick_Wait(16000000);
-    SysTick_Wait(16000000);     // wait 0.4 seconds to prevent carrying momentum
-    SysTick_Wait(16000000);
     while(1){
 
-//        data = UARTCharGet(UART5_BASE);
-//        if(data == 0xDD){
-            //returnData = "TEST";
-//        }
-        IR_functions();
-//        UARTCharPut(UART5_BASE,returnData);
-
-        turn_angle(-90);
-        FWD_cent(50);
-        turn_angle(90);
-
-//        sprintf(strToSend,"%d\r\n",0x86);
-//        for(i = 0; (strToSend[i] != '\0'); i++)
-//        //UARTCharPut(UART5_BASE,strToSend[i]);
-//        UARTCharPutNonBlocking(UART5_BASE, strToSend[i]);
+//        IR_functions();
     }
-
 }
 
 /**************************************HANDLERS**************************************/
@@ -137,29 +116,97 @@ void QEI1_handler(void){ // Left Wheel
     IND_Wh2 = IND_Wh2 + 1;
 
 }
+void UART_handler(void){
 
+    int32_t check;
+    UARTIntDisable(UART5_BASE,UART_INT_RX);
+    // check if something in FIFO
+    check = UARTCharGet(UART5_BASE);    // garbage variable
+    if(UARTCharsAvail(UART5_BASE)){
+        choice = UARTCharGet(UART5_BASE);
+    }
+    if((check != 0) && (choice == 0))
+        choice = check;
+
+    if (choice == 0x01){  // turn the input angle
+
+        mc_data = UARTCharGet(UART5_BASE);
+        mc_data_2 = UARTCharGet(UART5_BASE);
+
+        dis_wae = (mc_data << 8);
+        dis_wae |= mc_data_2;
+        mc_data = dis_wae;
+
+        if(dis_wae > 32767){
+            mc_data = (dis_wae - 65536);
+        }
+        turn_angle(mc_data);
+    }
+    if (choice == 0x02){  // drive forward for input cm
+
+        mc_data = UARTCharGet(UART5_BASE);
+        mc_data_2 = UARTCharGet(UART5_BASE);
+
+        dis_wae = (mc_data << 8);
+        dis_wae |= mc_data_2;
+        mc_data = dis_wae;
+
+        FWD_cent(mc_data);
+    }
+    if (choice == 0x03)   // toggle obstacle avoidance
+    {
+        IR_func = (IR_func ^ 1);
+        if(IR_func == false){
+            ADCSequenceDisable(ADC0_BASE, 1);
+        }
+        if(IR_func == true){
+            ADCSequenceEnable(ADC0_BASE, 1);
+        }
+    }
+    if (choice == 0x04)   // Self-Destruct
+    {
+        for(int k = 0;k < 4 ; k++){
+            turn_angle(-10);
+            turn_angle(10);
+        }
+    }
+
+    while(UARTCharsAvail(UART5_BASE)){  // clean up anything left in FIFO
+        check = UARTCharGet(UART5_BASE);
+    }
+    choice = 0;
+    UARTIntEnable(UART5_BASE,UART_INT_RX);
+}
 void ADC_function(void){
 
-        ADCProcessorTrigger(ADC0_BASE, 1);
+  //  ADCProcessorTrigger(ADC0_BASE, 1);
+    ADCIntDisable(ADC0_BASE, 1);
+    ADCIntClear(ADC0_BASE, 1);
 
-        // Wait for conversion to be completed.
-        while(!ADCIntStatus(ADC0_BASE, 1, false)){}
-        //
-        // Clear the ADC interrupt flag.
-        ADCIntClear(ADC0_BASE, 1);
-        //
-        // Read ADC Value.
-        ADCSequenceDataGet(ADC0_BASE, 1, ADC_Data);
+    // Wait for conversion to be completed.
+    //while(!ADCIntStatus(ADC0_BASE, 1, false)){}
+    //
+    // Clear the ADC interrupt flag.
 
-        ADC_F = ADC_Data[0];
-        ADC_R = ADC_Data[1];
-        ADC_L = ADC_Data[2];
+    //
+    // Read ADC Value.
+    ADCSequenceDataGet(ADC0_BASE, 1, ADC_Data);
+
+    ADC_F = ADC_Data[0];
+    ADC_R = ADC_Data[1];
+    ADC_L = ADC_Data[2];
+
+    IR_functions();
+    ADC_flag = true;
+    ADCIntEnable(ADC0_BASE, 1);
 
 }
 
 void IR_functions(void){
-
-    ADC_function();
+    if(IR_func == false){
+        return;
+    }
+//    ADC_function();
 
     ////////////////////////////   LAB5    /////////////////////
     //Robot will operate in IR mode when distances detected on all three sensors are below an ADC reading of 650
@@ -168,49 +215,47 @@ void IR_functions(void){
 
     //Conditional statements for ADC_F = 1000, ADC_R = 2100, and ADC_L = 1950 indicate robot is able to move freely
     //and there are no obstacles w/in a 15cm radius in front of it.
-    if((ADC_F<=1000) && (ADC_R<=2100) && (ADC_L<=1950)){
+    if((ADC_F<=1900) && (ADC_R<=3100) && (ADC_L<=2850)){
 
         //Keep driving forward until an object is detected
         all_FWD();
 
-    }else if((ADC_F>1000) && (ADC_R<=2100) && (ADC_L<=1950)){
+    }else if((ADC_F>1900) && (ADC_R<=3100) && (ADC_L<=2850)){
 
         //Front sensor detects an obstacle, stop bust a U and drive in opposite direction
-        CW_90();
-        CW_90();
+        turn_angle(180);
         all_FWD();
 
-    }else if((ADC_F>1000) && (ADC_R>2100) && (ADC_L<=1950)){
+    }else if((ADC_F>1900) && (ADC_R>3100) && (ADC_L<=2850)){
 
         //Front and Right IR sensor detect obstacle, rotate CCW
-        CCW_90();
+        turn_angle(-90);
         all_FWD();
 
-    }else if((ADC_F>1000) && (ADC_R<=2100) && (ADC_L>1950)){
+    }else if((ADC_F>1900) && (ADC_R<=3100) && (ADC_L>2850)){
 
         //Front and Left IR sensor detect obstacle, rotate CW
-        CW_90();
+        turn_angle(90);
         all_FWD();
 
-    }else if((ADC_F<=1000) && (ADC_R>3000) && (ADC_L<=1950)){
+    }else if((ADC_F<=1900) && (ADC_R>3100) && (ADC_L<=2850)){
 
         //Robot is driving too close to an obstacle on the Right, rotate CCW
-        CCW_90();
+        turn_angle(-90);
         all_FWD();
 
-    }else if((ADC_F<=1000) && (ADC_R<=2100) && (ADC_L>3000)){
+    }else if((ADC_F<=1900) && (ADC_R<=2800) && (ADC_L>2850)){
 
         //Robot is driving too close to an obstacle on the Left, rotate CW
-        CW_90();
+        turn_angle(90);
         all_FWD();
 
     }else{
-
         //Keep driving forward
         all_FWD();
-
     }
-
+    all_Brake();
+    //SysTick_Wait(16000000); // wait to prevent carrying momentum from previous movement
 }
 void bumpSensor_handler(void){
 
@@ -228,33 +273,26 @@ void bumper_function(void){
         //blink leds when bumpers make contact PD2 right switch
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | ~GPIO_PIN_2));
         //reverse
-        all_REV();
-        SysTick_Wait(16000000);     // wait 0.4 seconds to prevent carrying momentum
-        SysTick_Wait(16000000);
+        REV_cent(8);
         //ccw rotate
-        CCW_90();
+        turn_angle(-90);
     }
 
     if(l_bumpSensors == 0){
         //blink leds when bumpers make contact PD1 left switch
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (~GPIO_PIN_1 | GPIO_PIN_2));
         //reverse
-        all_REV();
-        SysTick_Wait(16000000);     // wait 0.4 seconds to prevent carrying momentum
-        SysTick_Wait(16000000);
+        REV_cent(8);
         //cw rotate
-        CW_90();
+        turn_angle(90);
     }
     else if((r_bumpSensors == 0) && (l_bumpSensors == 0)){
         //blink leds when bumpers make contact
         GPIOPinWrite(GPIO_PORTF_BASE,(GPIO_PIN_1 | GPIO_PIN_2), (GPIO_PIN_1 | GPIO_PIN_2));
         // Reverse
-        all_REV();
-        SysTick_Wait(16000000);     // wait 0.4 seconds to prevent carrying momentum
-        SysTick_Wait(16000000);
+        REV_cent(8);
         //cw rotate
-        CW_90();
-        CW_90();
+        turn_angle(180);
     }
     else{
         // Turn the bumper interrupts back on
@@ -437,8 +475,8 @@ void initADC(void){
     // conversion.  Each ADC module has 4 programmable sequences, sequence 0
     // to sequence 3.  This example is arbitrarily using sequence 3.
     //
-    ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_PROCESSOR, 0);
-
+    //ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_PROCESSOR, 0);
+    ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_ALWAYS, 0);
     // Configure step 0 on sequence 3.  Sample channel 0 (ADC_CTL_CH0) in
     // single-ended mode (default) and configure the interrupt flag
     // (ADC_CTL_IE) to be set when the sample is done.  Tell the ADC logic
@@ -452,15 +490,18 @@ void initADC(void){
     ADCSequenceStepConfigure(ADC0_BASE, 1, 1, ADC_CTL_CH1);
     ADCSequenceStepConfigure(ADC0_BASE, 1, 2, ADC_CTL_CH2| ADC_CTL_IE | ADC_CTL_END);   // enable interrupt after ch2 read
 
-    ADCHardwareOversampleConfigure(ADC0_BASE, 4);
+    ADCHardwareOversampleConfigure(ADC0_BASE, 16);
     //
     // Since sample sequence 3 is now configured, it must be enabled.
     //
-    ADCSequenceEnable(ADC0_BASE, 1);
+    ADCIntRegister (ADC0_BASE, 0x1,ADC_function);
+    //ADCIntEnableEx (ADC0_BASE, ADC_INT_SS1);
+    ADCIntEnable (ADC0_BASE, 1);
 
     // Clear the interrupt status flag.  This is done to make sure the
     // interrupt flag is cleared before we sample.
     //
+    ADCSequenceEnable(ADC0_BASE, 1);
     ADCIntClear(ADC0_BASE, 1);
     //
     // Sample AIN0 forever.  Display the value on the console.
@@ -473,157 +514,86 @@ void initUART5(void){
     GPIOPinConfigure(GPIO_PE5_U5TX);
     GPIOPinTypeUART(GPIO_PORTE_BASE, (GPIO_PIN_4 | GPIO_PIN_5));
     UARTConfigSetExpClk(UART5_BASE, SysCtlClockGet(), 115200, (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
+    UARTIntRegister(UART5_BASE,UART_handler);
+    UARTFIFOLevelSet(UART5_BASE,UART_FIFO_TX7_8,UART_FIFO_RX1_8);
     UARTEnable(UART5_BASE);
+    UARTIntEnable(UART5_BASE,UART_INT_RX);
 }
 
 /**************************************PROCEDURES**************************************/
-void PD_control(void)
-{
+
+void PD_control(void){
+
     // this function corrects the errors in the wheel speed every 0.5 seconds
     // this will allow robot to travel a straighter path with less error in position
 
     TimerDisable(TIMER0_BASE, TIMER_A);
     TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 
+    if(da_wae == false){
+        TimerEnable(TIMER0_BASE, TIMER_A);
+        return;
+    }
+
     speed_Wh1 = QEIVelocityGet(QEI0_BASE);  // RPM of Left wheel
     speed_Wh2 = QEIVelocityGet(QEI1_BASE);  // RPM of Right wheel
 
     int32_t P;      // Proportional error
     int32_t D;      // Derivative error
-
     int32_t error;
     error = (speed_Wh1 - speed_Wh2);
-    if((da_wae == true) && (error != 0))
-    {
+
+    if(error != 0){
+
         if(error < 0){  //Wheel 2 (Right) speed greater than Wheel 1 (left)
             error = -(error);
             P = Kp*(error);
             D = Kd * (error - prev_error);
-            R_SPD = R_SPD - (P + D);        // decrease right speed
-            L_SPD = L_SPD + (P + D);        // increase left speed
+            R_SPD = (R_SPD - (P + D));        // decrease right speed
+            L_SPD = (L_SPD + (P + D));        // increase left speed
         }
         else{       // Left speed greater than Right
             P = Kp*(error);
             D = Kd * (error - prev_error);
-            R_SPD = R_SPD + (P + D);        // increase right speed
-            L_SPD = L_SPD - (P + D);        // decrease left speed
+            R_SPD = (R_SPD + (P + D));        // increase right speed
+            L_SPD = (L_SPD - (P + D));        // decrease left speed
         }
     }
-    if((R_SPD < 5000)|| (L_SPD < 5000)){
+    if(R_SPD < 5200){
+        R_SPD = (R_SPD + 700);   // if below 50% duty cycle increase duty cycle
+    }
+    if(L_SPD < 5000){
+        L_SPD = (L_SPD + 700);
+    }
+    if(R_SPD > 9400){   // if above 93% duty cycle decrease duty cycle
+        R_SPD = (R_SPD - 700);
+    }
+    if(L_SPD > 9500){
+        L_SPD = (L_SPD - 700);
+    }
 
-        R_SPD = R_SPD + 1000;   // if below 50% duty cycle increase duty cycle
-        L_SPD = L_SPD + 1000;
-
-    }
-    if(R_SPD > 9300){   // if above 93% duty cycle decrease duty cycle
-        R_SPD = R_SPD - 1000;
-    }
-    if(L_SPD > 9300){
-        L_SPD = L_SPD - 1000;
-    }
     prev_error = error;
+
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, L_SPD);   // Set left speed
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, R_SPD);   // Set right speed
+
     TimerEnable(TIMER0_BASE, TIMER_A);
-}
-void CW_90(void){
-
-    da_wae = false;
-    cnt = 0;
-    right_brake();
-    left_brake();
-    SysTick_Wait(16000000); // wait to prevent carrying momentum from previous movement
-    // slow down for turning
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, 6500);   // Right Wheel Speed Control
-    // Set the pulse width of PWM1
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, 6500);   // Left Wheel Speed Control
-    QEIPositionSet(QEI0_BASE, 0);
-    QEIPositionSet(QEI1_BASE, 0);
-    POS_Wh1 = QEIPositionGet(QEI0_BASE);
-    POS_Wh2 = QEIPositionGet(QEI1_BASE);
-    left_FWD();
-    right_REV();
-
-    //while((POS_Wh1 != 51) && (POS_Wh2 != 51))
-    while(1){
-
-        POS_Wh1 = QEIPositionGet(QEI0_BASE);
-        POS_Wh2 = QEIPositionGet(QEI1_BASE);
-
-        if(POS_Wh1 == 52){
-           left_brake();
-           PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, L_SPD);   // Resume left speed
-           QEIPositionSet(QEI0_BASE, 0);
-           cnt = cnt + 1;
-        }
-        if(POS_Wh2 == (127-52)){
-           right_brake();
-           PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, R_SPD);   // Resume right speed
-           QEIPositionSet(QEI1_BASE, 0);
-           cnt = cnt + 1;
-        }
-        if(cnt == 2){
-            break;
-        }
-    }
-    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
-    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
-}
-void CCW_90(void){
-    da_wae = false;
-    cnt = 0;
-    right_brake();
-    left_brake();
-    SysTick_Wait(16000000); // wait to prevent carrying momentum from previous movement
-    // slow down for turning
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, 6500);   // Right Wheel Speed Control
-    // Set the pulse width of PWM1
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, 6500);   // Left Wheel Speed Control
-    QEIPositionSet(QEI0_BASE, 0);
-    QEIPositionSet(QEI1_BASE, 0);
-
-    left_REV();
-    right_FWD();
-
-    POS_Wh1 = QEIPositionGet(QEI0_BASE);
-    POS_Wh2 = QEIPositionGet(QEI1_BASE);
-
-    while(1){
-
-        POS_Wh1 = QEIPositionGet(QEI0_BASE);
-        POS_Wh2 = QEIPositionGet(QEI1_BASE);
-
-        if(POS_Wh1 == (127-52)){
-            left_brake();
-            PWMPulseWidthSet(PWM0_BASE, PWM_OUT_1, L_SPD);   // Resume left speed
-            QEIPositionSet(QEI0_BASE, 0);
-            cnt = cnt + 1;
-        }
-        if(POS_Wh2 == 52){
-            right_brake();
-            PWMPulseWidthSet(PWM0_BASE, PWM_OUT_0, R_SPD);   // Resume right speed
-            QEIPositionSet(QEI1_BASE, 0);
-            cnt = cnt + 1;
-        }
-        if(cnt == 2){
-            break;
-        }
-    }
-    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
-    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
 }
 void turn_angle(int angle){
 /* This function takes in an angle in degrees and converts it to robot movement based on current pose*/
     // Angle inputs must be greater than 10 degrees and no greater than 180 degrees absolute value
     // if conditions not met the function returns
     da_wae = false;
-    int condition_check = angle;
-    int index = 0;
-    if(condition_check < 0)
-        condition_check = - condition_check;
-    if((condition_check > 180) || (condition_check < 10))
+
+    int check = 0;
+    check = angle;
+    if(angle < 0)
+        check = -angle;
+
+    if(check > 180)
         return;
 
+    int index = 0;
     cnt = 0;
     right_brake();
     left_brake();
@@ -640,7 +610,7 @@ void turn_angle(int angle){
     if(angle < 0){      // Turn CCW
         // convert the angle into wheel index
         angle = -angle;
-        index = 0.5*( (angle * 1.333333) - 1 ); // result goes to floor because of integers
+        index = 0.5*( (angle * 1.1) - 1 ); // result goes to floor because of integers
         left_REV();
         right_FWD();
         while(1){
@@ -667,7 +637,7 @@ void turn_angle(int angle){
     }
     else{       // Turn CW
         // convert the angle into wheel index
-        index = 0.5*( (angle * 1.333333) + 1 ); // result goes to floor because of integers
+        index = 0.5*( (angle * 1.1) + 1 ); // result goes to floor because of integers
         left_FWD();
         right_REV();
 
@@ -693,18 +663,21 @@ void turn_angle(int angle){
             }
         }
     }
-    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
-    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+      SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
+//    sprintf(strToSend,"%d\r\n",0xAA);
+//    for(i = 0; (strToSend[i] != '\0'); i++){
+//    UARTCharPut(UART5_BASE,strToSend[i]);
+//    }
+//    UARTCharPutNonBlocking(UART5_BASE, 0xAA);
 }
 void FWD_cent(int cm){  // This function moves the robot forward by given amount of centimeters
     /* this function takes in an integer and converts it to movement in centimeter*/
     // The input must be greater or equal to 2 cm ( for accuracy of movement )
     // if conditions not met the function returns
-    da_wae = false;
-    int condition_check = cm;
-    int index = (7 * cm) + 1;
-    if(condition_check < 2)
+    if(cm > 512)
         return;
+
+    int index = (7 * cm) + 1;
     int rev = (index/128); // how many revolutions
     int mod = (index%128); // how many indices after revolution
     cnt = 0;
@@ -740,48 +713,53 @@ void FWD_cent(int cm){  // This function moves the robot forward by given amount
         }
     }
     SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
-    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
 }
-void FWD_1_foot(void){  // This function moves the robot forward 1 foot
+void REV_cent(int cm){  // This function moves the robot forward by given amount of centimeters
+    /* this function takes in an integer and converts it to movement in centimeter*/
+    // The input must be greater or equal to 2 cm ( for accuracy of movement )
+    // if conditions not met the function returns
     da_wae = false;
-    cnt = 0;
-    QEIPositionSet(QEI0_BASE, 0);
-    QEIPositionSet(QEI1_BASE, 0);
+    if(cm > 512)
+        return;
 
-    all_FWD();
+    int index = (7 * cm) + 1;
+    int rev = (index/128); // how many revolutions
+    int mod = (index%128); // how many indices after revolution
+    mod = (127 - mod);
+    cnt = 0;
+    QEIPositionSet(QEI0_BASE, 0); // Left wheel reset
+    QEIPositionSet(QEI1_BASE, 0); // right wheel reset
+    all_REV();
 
     IND_Wh1 = 0;
     IND_Wh2 = 0;
-
-    POS_Wh1 = QEIPositionGet(QEI0_BASE);
-    POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
     while(cnt != 2){
 
         POS_Wh1 = QEIPositionGet(QEI0_BASE);
         POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
-        if(POS_Wh1 == 127){
-            IND_Wh1 = 1;
+        if(POS_Wh1 == 1){ // left wheel completed 1 revolution
+            IND_Wh1 = IND_Wh1 + 1;
+            QEIPositionSet(QEI0_BASE, 0); // Left wheel reset
         }
-        if(POS_Wh2 == 127){
-            IND_Wh2 = 1;
+        if(POS_Wh2 == 1){ // right wheel completed 1 revolution
+            IND_Wh2 = IND_Wh2 + 1;
+            QEIPositionSet(QEI1_BASE, 0); // right wheel reset
         }
-        if((POS_Wh1 == 90) && (IND_Wh1 == 1)){
+        if((POS_Wh1 == mod) && (IND_Wh1 == rev)){
             left_brake();
             QEIPositionSet(QEI0_BASE, 0);
             cnt = cnt + 1;
         }
-        if((POS_Wh2 == 90) && (IND_Wh2 == 1)){
+        if((POS_Wh2 == mod) && (IND_Wh2 == rev)){
             right_brake();
             QEIPositionSet(QEI1_BASE, 0);
             cnt = cnt + 1;
         }
     }
     SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
-    SysTick_Wait(16000000); // wait to prevent carrying momentum on to next movement
 }
-
 //////////////////////      Drive straight forward      ///////////////////////
 
 void all_FWD(void){
@@ -858,6 +836,11 @@ void left_standby(void){
     GPIOPinWrite(GPIO_PORTB_BASE,( (GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5) ), ( ~(GPIO_PIN_3) | (GPIO_PIN_4)| (GPIO_PIN_5)));
 
 }
+void all_Brake(void){
+    da_wae = false;
+    left_brake();
+    right_brake();
+}
 void initSysTick(void)
 {
     NVIC_ST_CTRL_R = 0;                   // disable SysTick during setup
@@ -871,10 +854,9 @@ void init_timerA(void)
     TimerIntDisable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
     TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);   // 32 bits Timer periodic
     TimerIntRegister(TIMER0_BASE, TIMER_A, PD_control);    // Registering;
+    TimerLoadSet(TIMER0_BASE, TIMER_A, (Clk_period/3) ); // 0.25 second interrupt
     IntEnable(INT_TIMER0A);
     TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
-
-    TimerLoadSet(TIMER0_BASE, TIMER_A, (Clk_period/2) ); // 0.5 second interrupt
     TimerEnable(TIMER0_BASE, TIMER_A);
 
 }
