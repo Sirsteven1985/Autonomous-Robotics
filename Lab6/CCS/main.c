@@ -2,9 +2,9 @@
  * main.c
  * ECPE 155 Autonomous Robotics
  * Spring 2018
- * Lab 5 - Obstacle Avoidance with the use of IR and bump sensors
+ * Lab 6 - Obstacle Avoidance with the use of IR and bump sensors
  * Lab Associates:  Paul Vuong
- *                  Steve Guerro
+ *                  Steve Guerrero
  * 1.   In addition to the bump switches, install the IR sensors (3).
  * 2.   Re-design obstacle avoidance from lab4.
  * 3.   Attach the IR sensors and connect to the TM4C.
@@ -57,8 +57,9 @@ volatile    uint8_t Kd = 2;     // Kd derivative const
 // Boolean variables
 _Bool da_wae = false;
 _Bool IR_func = true;
+_Bool bumped = true;
+_Bool ADC_threshold = false;
 _Bool ADC_flag = false;
-uint16_t dis_wae;
 
 // Bump Switches
 volatile    uint32_t r_bumpSensors = 0x4;
@@ -71,7 +72,8 @@ char strToSend[8];
 int32_t choice;
 int mc_data;
 int mc_data_2;
-
+int mc_data_3;
+int mc_data_4;
 int main(void){
 
     initSYSCTL();
@@ -92,7 +94,71 @@ int main(void){
     IND_Wh2 = 0;
     while(1){
 
-//        IR_functions();
+        if(ADC_flag){
+            IR_functions();
+        }
+        if(bumped == true){
+            bumper_function();
+            bumped = false;
+        }
+        if(choice == 0x1){    // turn the input angle
+            choice = 0;
+            while(!UARTCharsAvail(UART5_BASE)){  // clean up anything left in FIFO
+            }
+            mc_data = UARTCharGet(UART5_BASE);
+            mc_data = (mc_data << 8);
+            while(!UARTCharsAvail(UART5_BASE)){  // clean up anything left in FIFO
+            }
+            mc_data_2 = UARTCharGet(UART5_BASE);
+            mc_data |= mc_data_2;
+            if(mc_data > 32767){
+                mc_data = (mc_data - 65536);
+            }
+            turn_angle(mc_data);
+            UARTIntEnable(UART5_BASE,UART_INT_RX);     // re-enable UART interrupt
+        }
+        if(choice == 0x2){    // drive forward for input cm
+            choice = 0;
+            mc_data = UARTCharGet(UART5_BASE);
+            mc_data = (mc_data << 8);
+            while(!UARTCharsAvail(UART5_BASE)){  // clean up anything left in FIFO
+            }
+            mc_data_2 = UARTCharGet(UART5_BASE);
+            mc_data |= mc_data_2;
+            FWD_cent(mc_data);
+            UARTIntEnable(UART5_BASE,UART_INT_RX);     // re-enable UART interrupt
+         }
+        if (choice == 0x03)   // toggle obstacle avoidance
+        {   choice = 0;
+            IR_func = (IR_func ^ 1);
+            if(IR_func == false){
+                ADCSequenceDisable(ADC0_BASE, 1);   // disables ADC peripheral
+            }
+            else{
+                ADCSequenceEnable(ADC0_BASE, 1);    // enables ADC peripheral
+            }
+            UARTIntEnable(UART5_BASE,UART_INT_RX);     // re-enable UART interrupt
+        }
+        if(choice == 5){    // drive forward for input cm
+            choice = 0;
+            mc_data = UARTCharGet(UART5_BASE);
+            mc_data = (mc_data << 8);
+            mc_data_2 = UARTCharGet(UART5_BASE);
+            mc_data |= mc_data_2;
+            mc_data_3 = UARTCharGet(UART5_BASE);
+            mc_data_3 = (mc_data_3 << 8);
+            while(!UARTCharsAvail(UART5_BASE)){  // clean up anything left in FIFO
+            }
+            mc_data_4 = UARTCharGet(UART5_BASE);
+            mc_data_3 |= mc_data_4;
+            if(mc_data > 32767){
+                mc_data = (mc_data - 65536);
+            }
+            turn_angle(mc_data);
+
+            FWD_cent(mc_data_3);
+            UARTIntEnable(UART5_BASE,UART_INT_RX);     // re-enable UART interrupt
+         }
     }
 }
 
@@ -106,81 +172,64 @@ void QEI0_handler(void){ // Left Wheel
     IND_Wh1 = IND_Wh1 + 1;
 
 }
-
-void QEI1_handler(void){ // Left Wheel
-
+void QEI1_handler(void){ // Right Wheel
     QEIIntClear(QEI1_BASE, (QEI_INTTIMER | QEI_INTDIR | QEI_INTERROR | QEI_INTINDEX));
 
     //POS_Wh1 = QEIPositionGet(QEI0_BASE);
     //direction_Wh1 = QEIDirectionGet(QEI0_BASE);
     IND_Wh2 = IND_Wh2 + 1;
-
 }
 void UART_handler(void){
 
     int32_t check;
-    UARTIntDisable(UART5_BASE,UART_INT_RX);
+    UARTIntDisable(UART5_BASE,UART_INT_RX); // disable so that it doesn't reenter the handler upon user input
     // check if something in FIFO
-    check = UARTCharGet(UART5_BASE);    // garbage variable
+    check = UARTCharGet(UART5_BASE);    // garbage variable;
     if(UARTCharsAvail(UART5_BASE)){
         choice = UARTCharGet(UART5_BASE);
     }
     if((check != 0) && (choice == 0))
         choice = check;
 
-    if (choice == 0x01){  // turn the input angle
-
-        mc_data = UARTCharGet(UART5_BASE);
-        mc_data_2 = UARTCharGet(UART5_BASE);
-
-        dis_wae = (mc_data << 8);
-        dis_wae |= mc_data_2;
-        mc_data = dis_wae;
-
-        if(dis_wae > 32767){
-            mc_data = (dis_wae - 65536);
-        }
-        turn_angle(mc_data);
-    }
-    if (choice == 0x02){  // drive forward for input cm
-
-        mc_data = UARTCharGet(UART5_BASE);
-        mc_data_2 = UARTCharGet(UART5_BASE);
-
-        dis_wae = (mc_data << 8);
-        dis_wae |= mc_data_2;
-        mc_data = dis_wae;
-
-        FWD_cent(mc_data);
-    }
-    if (choice == 0x03)   // toggle obstacle avoidance
-    {
-        IR_func = (IR_func ^ 1);
-        if(IR_func == false){
-            ADCSequenceDisable(ADC0_BASE, 1);
-        }
-        if(IR_func == true){
-            ADCSequenceEnable(ADC0_BASE, 1);
-        }
-    }
+//    if (choice == 0x01){  // turn the input angle
+//        mc_data = UARTCharGet(UART5_BASE);
+//        if(UARTCharsAvail(UART5_BASE))
+//            mc_data_2 = UARTCharGet(UART5_BASE);
+//
+//        dis_wae = (mc_data << 8);
+//        dis_wae |= mc_data_2;
+//        mc_data = dis_wae;
+//
+//        if(dis_wae > 32767){
+//            mc_data = (dis_wae - 65536);
+//        }
+//    }
+//    if (choice == 0x02){  // drive forward for input cm
+//        mc_data = UARTCharGet(UART5_BASE);
+//        if(UARTCharsAvail(UART5_BASE))
+//            mc_data_2 = UARTCharGet(UART5_BASE);
+//
+//        dis_wae = (mc_data << 8);
+//        dis_wae |= mc_data_2;
+//        mc_data = dis_wae;
+//
+//    }
     if (choice == 0x04)   // Self-Destruct
     {
         for(int k = 0;k < 4 ; k++){
             turn_angle(-10);
             turn_angle(10);
         }
+        choice = 0;
     }
 
-    while(UARTCharsAvail(UART5_BASE)){  // clean up anything left in FIFO
-        check = UARTCharGet(UART5_BASE);
-    }
-    choice = 0;
-    UARTIntEnable(UART5_BASE,UART_INT_RX);
+
+   // UARTIntEnable(UART5_BASE,UART_INT_RX);     // re-enable UART interrupt
 }
 void ADC_function(void){
 
   //  ADCProcessorTrigger(ADC0_BASE, 1);
-    ADCIntDisable(ADC0_BASE, 1);
+  //  ADCIntDisable(ADC0_BASE, 1);
     ADCIntClear(ADC0_BASE, 1);
 
     // Wait for conversion to be completed.
@@ -196,17 +245,14 @@ void ADC_function(void){
     ADC_R = ADC_Data[1];
     ADC_L = ADC_Data[2];
 
-    IR_functions();
     ADC_flag = true;
+    if((ADC_F > 1900) || (ADC_L > 2850) || (ADC_R > 3100))
+        ADC_threshold = true;
     ADCIntEnable(ADC0_BASE, 1);
 
 }
 
 void IR_functions(void){
-    if(IR_func == false){
-        return;
-    }
-//    ADC_function();
 
     ////////////////////////////   LAB5    /////////////////////
     //Robot will operate in IR mode when distances detected on all three sensors are below an ADC reading of 650
@@ -215,47 +261,22 @@ void IR_functions(void){
 
     //Conditional statements for ADC_F = 1000, ADC_R = 2100, and ADC_L = 1950 indicate robot is able to move freely
     //and there are no obstacles w/in a 15cm radius in front of it.
-    if((ADC_F<=1900) && (ADC_R<=3100) && (ADC_L<=2850)){
-
-        //Keep driving forward until an object is detected
-        all_FWD();
-
-    }else if((ADC_F>1900) && (ADC_R<=3100) && (ADC_L<=2850)){
-
+    if(ADC_F > 1900){
         //Front sensor detects an obstacle, stop bust a U and drive in opposite direction
-        turn_angle(180);
-        all_FWD();
+        turn_angle(45);
 
-    }else if((ADC_F>1900) && (ADC_R>3100) && (ADC_L<=2850)){
-
-        //Front and Right IR sensor detect obstacle, rotate CCW
-        turn_angle(-90);
-        all_FWD();
-
-    }else if((ADC_F>1900) && (ADC_R<=3100) && (ADC_L>2850)){
-
+    }else if(ADC_L > 2850){
         //Front and Left IR sensor detect obstacle, rotate CW
-        turn_angle(90);
-        all_FWD();
+        turn_angle(45);
 
-    }else if((ADC_F<=1900) && (ADC_R>3100) && (ADC_L<=2850)){
-
+    }else if(ADC_R>3100){
         //Robot is driving too close to an obstacle on the Right, rotate CCW
-        turn_angle(-90);
-        all_FWD();
-
-    }else if((ADC_F<=1900) && (ADC_R<=2800) && (ADC_L>2850)){
-
-        //Robot is driving too close to an obstacle on the Left, rotate CW
-        turn_angle(90);
-        all_FWD();
-
-    }else{
-        //Keep driving forward
-        all_FWD();
+        turn_angle(-45);
     }
+
+    ADC_flag = false;
     all_Brake();
-    //SysTick_Wait(16000000); // wait to prevent carrying momentum from previous movement
+
 }
 void bumpSensor_handler(void){
 
@@ -263,10 +284,9 @@ void bumpSensor_handler(void){
     l_bumpSensors = GPIOPinRead(GPIO_PORTD_BASE, GPIO_PIN_2);
     r_bumpSensors = GPIOPinRead(GPIO_PORTD_BASE, GPIO_PIN_3);
     GPIOIntDisable(GPIO_PORTD_BASE, (GPIO_PIN_2 | GPIO_PIN_3));
-    bumper_function();
+    bumped = true;
 
 }
-
 void bumper_function(void){
 
     if(r_bumpSensors == 0){
@@ -490,7 +510,7 @@ void initADC(void){
     ADCSequenceStepConfigure(ADC0_BASE, 1, 1, ADC_CTL_CH1);
     ADCSequenceStepConfigure(ADC0_BASE, 1, 2, ADC_CTL_CH2| ADC_CTL_IE | ADC_CTL_END);   // enable interrupt after ch2 read
 
-    ADCHardwareOversampleConfigure(ADC0_BASE, 16);
+    ADCHardwareOversampleConfigure(ADC0_BASE, 8);
     //
     // Since sample sequence 3 is now configured, it must be enabled.
     //
@@ -614,7 +634,10 @@ void turn_angle(int angle){
         left_REV();
         right_FWD();
         while(1){
-
+            if((bumped == true) || (ADC_threshold == true)){
+                ADC_threshold = false;
+                break;
+            }
             POS_Wh1 = QEIPositionGet(QEI0_BASE);
             POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
@@ -642,7 +665,10 @@ void turn_angle(int angle){
         right_REV();
 
         while(1){
-
+            if((bumped == true) || (ADC_threshold == true)){
+                ADC_threshold = false;
+                break;
+            }
             POS_Wh1 = QEIPositionGet(QEI0_BASE);
             POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
@@ -689,7 +715,10 @@ void FWD_cent(int cm){  // This function moves the robot forward by given amount
     IND_Wh2 = 0;
 
     while(cnt != 2){
-
+        if((bumped == true) || (ADC_threshold == true)){
+            ADC_threshold = false;
+            break;
+        }
         POS_Wh1 = QEIPositionGet(QEI0_BASE);
         POS_Wh2 = QEIPositionGet(QEI1_BASE);
 
@@ -701,12 +730,12 @@ void FWD_cent(int cm){  // This function moves the robot forward by given amount
             IND_Wh2 = IND_Wh2 + 1;
             QEIPositionSet(QEI1_BASE, 0); // right wheel reset
         }
-        if((POS_Wh1 == mod) && (IND_Wh1 == rev)){
+        if((POS_Wh1 == mod) && (IND_Wh1 >= rev)){
             left_brake();
             QEIPositionSet(QEI0_BASE, 0);
             cnt = cnt + 1;
         }
-        if((POS_Wh2 == mod) && (IND_Wh2 == rev)){
+        if((POS_Wh2 == mod) && (IND_Wh2 >= rev)){
             right_brake();
             QEIPositionSet(QEI1_BASE, 0);
             cnt = cnt + 1;
@@ -747,12 +776,12 @@ void REV_cent(int cm){  // This function moves the robot forward by given amount
             IND_Wh2 = IND_Wh2 + 1;
             QEIPositionSet(QEI1_BASE, 0); // right wheel reset
         }
-        if((POS_Wh1 == mod) && (IND_Wh1 == rev)){
+        if((POS_Wh1 == mod) && (IND_Wh1 >= rev)){
             left_brake();
             QEIPositionSet(QEI0_BASE, 0);
             cnt = cnt + 1;
         }
-        if((POS_Wh2 == mod) && (IND_Wh2 == rev)){
+        if((POS_Wh2 == mod) && (IND_Wh2 >= rev)){
             right_brake();
             QEIPositionSet(QEI1_BASE, 0);
             cnt = cnt + 1;
