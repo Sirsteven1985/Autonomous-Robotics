@@ -5,7 +5,36 @@
 
 * Files to grade for labs/worksheets:
 
+* Lab 8:
+	-R_pi
+	
+		-ECPE155_Lab6.py
+	-Tiva
+	
+		-main.c
+		
+		-motor_control.h
+
+* Lab 7:
+	-R_pi
+	
+		-ECPE155_Lab7.py
+	-Tiva
+	
+		-main.c
+		
+		-motor_control.h
+	-Lab 7 req's.pdf
+
 * Lab 6:
+	-R_pi
+	
+		-ECPE155_Lab6.py
+	-Tiva
+	
+		-main.c
+		
+		-motor_control.h
 
 * Worksheet 5:
 
