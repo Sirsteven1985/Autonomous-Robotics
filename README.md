@@ -5,6 +5,20 @@
 
 * Files to grade for labs/worksheets:
 
+* Final Competition:
+	
+	-Final Competition.docx
+
+	-R_pi
+	
+		-comp.py
+		
+	-Tiva
+	
+		-main.c
+		
+		-motor_control.h
+		
 * Lab 8:
 	-R_pi
 	
