@@ -4,6 +4,11 @@
 * Authors: Steve Guerrero and Paul Vuong
 
 * Files to grade for labs/worksheets:
+* Competition
+	-The potential fields failed on the first run and worked slightly on the second run. The robot was able to reach the first node
+	but failed afterwards becuase the we didn't expand the capabilites to drive to other nodes in the map. The mapping capabilites we
+	programmed right before the competitiion wasn't fully tested and led to an error in the python code. That was a result of the robot driving outside
+	of the created map indecies. Lessons learned; don't add features too late and expect them to fully function without testing, and ask for help more often.
 
 * Lab 8:
 	-R_pi
